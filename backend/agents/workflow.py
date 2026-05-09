@@ -1,9 +1,24 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from backend.agents.financial_agent import run_financial_agent
 from backend.agents.market_agent import run_market_agent
 from backend.agents.memo_agent import run_memo_agent
 from backend.agents.risk_agent import run_risk_agent
 from backend.memory import memory_store
-from backend.schemas import AnalyzeRequest, AnalyzeResponse
+from backend.schemas import AnalyzeRequest, AnalyzeResponse, FinancialAnalysis
+
+
+def run_specialist_agents(company_text: str) -> tuple[str, FinancialAnalysis, str]:
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        market_future = executor.submit(run_market_agent, company_text)
+        financial_future = executor.submit(run_financial_agent, company_text)
+        risk_future = executor.submit(run_risk_agent, company_text)
+
+        return (
+            market_future.result(),
+            financial_future.result(),
+            risk_future.result(),
+        )
 
 
 def run_investment_banking_workflow(request: AnalyzeRequest) -> AnalyzeResponse:
@@ -19,10 +34,11 @@ Current company context:
 
     memory_store.add_message(session.session_id, "user", request.company_text)
 
-    market_analysis = run_market_agent(company_text_with_memory)
-    financial_analysis = run_financial_agent(company_text_with_memory)
-    risk_analysis = run_risk_agent(company_text_with_memory)
+    market_analysis, financial_analysis, risk_analysis = run_specialist_agents(
+        company_text_with_memory
+    )
 
+    # Synthesis is intentionally sequential because it depends on specialist outputs.
     investment_memo = run_memo_agent(
         company_text=company_text_with_memory,
         market_analysis=market_analysis,
