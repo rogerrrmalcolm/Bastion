@@ -15,6 +15,21 @@ MetricCategory = Literal[
     "other",
 ]
 
+AgentName = Literal["market_agent", "financial_agent", "risk_agent", "memo_agent"]
+
+ToolName = Literal[
+    "document_search",
+    "financial_metric_extraction",
+    "growth_rate_calculator",
+    "margin_calculator",
+    "runway_calculator",
+    "valuation_multiple_calculator",
+    "market_research",
+    "risk_register",
+    "citation_builder",
+    "memo_synthesis",
+]
+
 
 class AnalyzeRequest(BaseModel):
     session_id: str | None = Field(
@@ -24,6 +39,40 @@ class AnalyzeRequest(BaseModel):
     company_text: str = Field(
         min_length=20,
         description="Company, market, financial, or deal context to analyze.",
+    )
+
+
+class ToolAssignment(BaseModel):
+    tool_name: ToolName = Field(description="Whitelisted tool assigned to the agent.")
+    purpose: str = Field(description="Specific job this tool should perform.")
+
+
+class AgentExecutionStep(BaseModel):
+    agent_name: AgentName = Field(description="Agent responsible for this step.")
+    execution_group: int = Field(
+        ge=1,
+        description=(
+            "Steps with the same group can run in parallel. Higher groups run "
+            "after lower groups complete."
+        ),
+    )
+    objective: str = Field(description="Specific output this agent must produce.")
+    context_needed: list[str] = Field(
+        default_factory=list,
+        description="Prior outputs or source context this step depends on.",
+    )
+    tools: list[ToolAssignment] = Field(
+        default_factory=list,
+        description="Whitelisted tools the agent should use for this step.",
+    )
+
+
+class OrchestrationPlan(BaseModel):
+    cfo_rationale: str = Field(
+        description="Brief explanation of the workflow chosen by the CFO orchestrator."
+    )
+    steps: list[AgentExecutionStep] = Field(
+        description="Ordered plan for specialist and synthesis agents."
     )
 
 
@@ -145,12 +194,97 @@ class FinancialAnalysis(BaseModel):
     )
 
 
+class MarketFinding(BaseModel):
+    title: str = Field(description="Short market finding title.")
+    detail: str = Field(description="Clear explanation for a third-party reader.")
+    impact: Literal["positive", "neutral", "negative"] = Field(
+        description="Expected impact on the investment thesis."
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        description="Confidence based on available evidence."
+    )
+    citation: FinancialCitation | None = Field(
+        default=None,
+        description="Source supporting this finding.",
+    )
+
+
+class MarketAnalysis(BaseModel):
+    executive_summary: str = Field(description="Concise market view in plain English.")
+    industry: str = Field(description="Industry or category the company operates in.")
+    market_position: str = Field(description="Assessment of competitive position.")
+    growth_drivers: list[MarketFinding] = Field(default_factory=list)
+    competitive_risks: list[MarketFinding] = Field(default_factory=list)
+    demand_risks: list[MarketFinding] = Field(default_factory=list)
+    key_competitors: list[str] = Field(default_factory=list)
+    investment_thesis_contribution: str = Field(
+        description="How the market view supports or weakens the investment thesis."
+    )
+    missing_information: list[str] = Field(default_factory=list)
+    overall_confidence: Literal["low", "medium", "high"]
+
+
+class RiskItem(BaseModel):
+    title: str = Field(description="Short risk title.")
+    description: str = Field(description="Plain-English description of the risk.")
+    category: Literal[
+        "financial",
+        "market",
+        "legal",
+        "operational",
+        "technology",
+        "governance",
+        "execution",
+        "other",
+    ]
+    severity: Literal["low", "medium", "high"]
+    likelihood: Literal["low", "medium", "high"]
+    deal_impact: str = Field(description="How this risk could affect valuation or execution.")
+    mitigation: str | None = Field(default=None, description="Possible mitigation or next step.")
+    citation: FinancialCitation | None = None
+
+
+class RiskAnalysis(BaseModel):
+    executive_summary: str = Field(description="Concise risk view in plain English.")
+    top_risks: list[RiskItem] = Field(default_factory=list)
+    red_flags: list[RiskItem] = Field(default_factory=list)
+    diligence_priorities: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    overall_risk_rating: Literal["low", "medium", "high"]
+    overall_confidence: Literal["low", "medium", "high"]
+
+
+class MemoDataPoint(BaseModel):
+    label: str = Field(description="Short label for the data point.")
+    value: str = Field(description="Metric, finding, or conclusion.")
+    source_agent: AgentName = Field(description="Agent that produced or supported the point.")
+    citation: FinancialCitation | None = None
+
+
+class InvestmentMemo(BaseModel):
+    executive_summary: str = Field(
+        description="Short narrative summary suitable for a third-party reader."
+    )
+    investment_thesis: str = Field(description="Narrative investment thesis.")
+    recommendation: Literal["proceed", "proceed_with_caution", "pause", "decline"]
+    recommendation_rationale: str = Field(description="Plain-English rationale.")
+    market_view: str = Field(description="Narrative market summary.")
+    financial_view: str = Field(description="Narrative financial summary.")
+    risk_view: str = Field(description="Narrative risk summary.")
+    key_data_points: list[MemoDataPoint] = Field(default_factory=list)
+    key_risks: list[str] = Field(default_factory=list)
+    next_diligence_steps: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    overall_confidence: Literal["low", "medium", "high"]
+
+
 class AnalyzeResponse(BaseModel):
     session_id: str
-    market_analysis: str
+    orchestration_plan: OrchestrationPlan
+    market_analysis: MarketAnalysis
     financial_analysis: FinancialAnalysis
-    risk_analysis: str
-    investment_memo: str
+    risk_analysis: RiskAnalysis
+    investment_memo: InvestmentMemo
 
 
 class ChatRequest(BaseModel):

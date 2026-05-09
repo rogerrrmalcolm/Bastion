@@ -1,37 +1,44 @@
-from backend.gemini_client import call_gemini
-from backend.schemas import FinancialAnalysis
+from backend.gemini_client import call_gemini_structured
+from backend.schemas import (
+    FinancialAnalysis,
+    InvestmentMemo,
+    MarketAnalysis,
+    RiskAnalysis,
+)
+
+
+def _to_json_context(value: object) -> str:
+    if hasattr(value, "model_dump_json"):
+        return value.model_dump_json(indent=2)
+    return str(value)
 
 
 def run_memo_agent(
     company_text: str,
-    market_analysis: str,
+    market_analysis: MarketAnalysis | str,
     financial_analysis: FinancialAnalysis | str,
-    risk_analysis: str,
-) -> str:
-    if isinstance(financial_analysis, FinancialAnalysis):
-        financial_analysis_context = financial_analysis.model_dump_json(indent=2)
-    else:
-        financial_analysis_context = financial_analysis
-
-    return call_gemini(
+    risk_analysis: RiskAnalysis | str,
+) -> InvestmentMemo:
+    return call_gemini_structured(
         f"""
 You are a managing director at an investment bank.
 
-Create a concise investment banking memo using the source company context and
-the specialist agent outputs. Include: overview, market view, financial view,
-key risks, recommendation, and next diligence steps. Do not include to/from/date
-headers or invent dates. Do not make personalized investment advice claims.
+Create the final investment memo using the source company context and structured
+specialist outputs. The final memo should mix concise narrative sentences with
+clear data fields. Return structured JSON only. Do not include to/from/date
+headers, invent dates, or make personalized investment advice claims.
 
 Company context:
 {company_text}
 
-Market analyst output:
-{market_analysis}
+Market analyst structured output:
+{_to_json_context(market_analysis)}
 
 Financial analyst structured output:
-{financial_analysis_context}
+{_to_json_context(financial_analysis)}
 
-Risk analyst output:
-{risk_analysis}
-"""
+Risk analyst structured output:
+{_to_json_context(risk_analysis)}
+""",
+        InvestmentMemo,
     )
