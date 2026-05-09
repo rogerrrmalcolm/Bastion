@@ -1,3 +1,4 @@
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.agents.financial_agent import run_financial_agent
@@ -16,10 +17,38 @@ from backend.schemas import (
     RiskAnalysis,
 )
 
+AgentCall = Callable[[], object]
+
+
+class ParallelAgent:
+    def __init__(self, agents: Mapping[str, AgentCall]) -> None:
+        self.agents = agents
+
+    def run(self) -> dict[str, object]:
+        with ThreadPoolExecutor(max_workers=len(self.agents)) as executor:
+            futures = {
+                name: executor.submit(agent_call)
+                for name, agent_call in self.agents.items()
+            }
+            return {name: future.result() for name, future in futures.items()}
+
+
+class SequentialAgent:
+    def __init__(self, agents: Mapping[str, AgentCall]) -> None:
+        self.agents = agents
+
+    def run(self) -> dict[str, object]:
+        return {name: agent_call() for name, agent_call in self.agents.items()}
+
+
 SPECIALIST_RUNNERS = {
     "market_agent": run_market_agent,
     "financial_agent": run_financial_agent,
     "risk_agent": run_risk_agent,
+}
+
+SYNTHESIS_RUNNERS = {
+    "memo_agent": run_memo_agent,
 }
 
 
@@ -71,17 +100,18 @@ def run_planned_specialist_agents(
             step for step in specialist_steps if step.execution_group == execution_group
         ]
 
-        with ThreadPoolExecutor(max_workers=len(group_steps)) as executor:
-            futures = {
-                step.agent_name: executor.submit(
-                    SPECIALIST_RUNNERS[step.agent_name],
-                    _agent_context(company_text, step, outputs),
+        parallel_agent = ParallelAgent(
+            {
+                step.agent_name: (
+                    lambda step=step: SPECIALIST_RUNNERS[step.agent_name](
+                        _agent_context(company_text, step, outputs)
+                    )
                 )
                 for step in group_steps
             }
+        )
 
-            for agent_name, future in futures.items():
-                outputs[agent_name] = future.result()
+        outputs.update(parallel_agent.run())
 
     return (
         outputs["market_agent"],
@@ -115,21 +145,25 @@ Current company context:
 
     memo_step = _step_for_agent(orchestration_plan, "memo_agent")
 
-    # Synthesis is intentionally sequential because it depends on specialist outputs.
-    investment_memo = run_memo_agent(
-        company_text=_agent_context(
-            company_text_with_memory,
-            memo_step,
-            {
-                "market_agent": market_analysis,
-                "financial_agent": financial_analysis,
-                "risk_agent": risk_analysis,
-            },
-        ),
-        market_analysis=market_analysis,
-        financial_analysis=financial_analysis,
-        risk_analysis=risk_analysis,
+    sequential_agent = SequentialAgent(
+        {
+            "memo_agent": lambda: SYNTHESIS_RUNNERS["memo_agent"](
+                company_text=_agent_context(
+                    company_text_with_memory,
+                    memo_step,
+                    {
+                        "market_agent": market_analysis,
+                        "financial_agent": financial_analysis,
+                        "risk_agent": risk_analysis,
+                    },
+                ),
+                market_analysis=market_analysis,
+                financial_analysis=financial_analysis,
+                risk_analysis=risk_analysis,
+            )
+        }
     )
+    investment_memo = sequential_agent.run()["memo_agent"]
 
     memory_store.add_message(
         session.session_id,

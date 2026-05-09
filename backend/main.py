@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 
-from backend.agents.workflow import run_investment_banking_workflow
+from backend.agents.workflow import (
+    ParallelAgent,
+    SequentialAgent,
+    run_investment_banking_workflow,
+)
 from backend.gemini_client import call_gemini
 from backend.memory import memory_store
 from backend.schemas import (
