@@ -209,14 +209,130 @@ class MarketFinding(BaseModel):
     )
 
 
+class MarketTrend(BaseModel):
+    trend: str = Field(description="Specific market trend or structural shift.")
+    evidence: str = Field(
+        description=(
+            "Evidence, company-context support, or clearly labeled analyst inference "
+            "behind the trend."
+        )
+    )
+    affected_segments: list[str] = Field(
+        default_factory=list,
+        description="Customer, product, geographic, or industry segments affected.",
+    )
+    time_horizon: Literal["near_term", "medium_term", "long_term", "multi_year"] = Field(
+        description="Expected timing of the market impact."
+    )
+    impact: Literal["positive", "neutral", "negative", "mixed"] = Field(
+        description="Direction of impact for the company or transaction thesis."
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        description="Confidence based on available evidence."
+    )
+    citation: FinancialCitation | None = Field(
+        default=None,
+        description="Source supporting this trend.",
+    )
+
+
+class MarketFactor(BaseModel):
+    factor: str = Field(description="Market factor being assessed.")
+    category: Literal[
+        "macro",
+        "geopolitical",
+        "regulatory",
+        "technology",
+        "customer_demand",
+        "supply_chain",
+        "competition",
+        "pricing",
+        "capital_markets",
+        "m_and_a",
+        "other",
+    ] = Field(description="Analytical category for the factor.")
+    current_signal: str = Field(description="Current signal or observation.")
+    thesis_impact: Literal["positive", "neutral", "negative", "mixed"] = Field(
+        description="Expected effect on the investment or M&A thesis."
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        description="Confidence based on evidence quality and market visibility."
+    )
+    citation: FinancialCitation | None = Field(
+        default=None,
+        description="Source supporting this factor.",
+    )
+
+
+class MarketScenario(BaseModel):
+    name: str = Field(description="Short scenario name.")
+    probability: Literal["low", "medium", "high"] = Field(
+        description="Relative likelihood based on available evidence."
+    )
+    description: str = Field(description="What happens in this scenario.")
+    market_impact: str = Field(description="Expected market impact.")
+    m_and_a_implication: str = Field(
+        description="Implication for valuation, buyer appetite, process timing, or diligence."
+    )
+    signposts: list[str] = Field(
+        default_factory=list,
+        description="Observable indicators that would make this scenario more or less likely.",
+    )
+
+
 class MarketAnalysis(BaseModel):
+    headline: str = Field(
+        default="",
+        description="Thesis-first market headline suitable for an investment committee.",
+    )
     executive_summary: str = Field(description="Concise market view in plain English.")
     industry: str = Field(description="Industry or category the company operates in.")
+    market_backdrop: str = Field(
+        default="",
+        description="Brief macro, sector, and transaction-market backdrop.",
+    )
     market_position: str = Field(description="Assessment of competitive position.")
+    trend_assessment: list[MarketTrend] = Field(
+        default_factory=list,
+        description="Core market trends and structural shifts affecting the thesis.",
+    )
+    key_market_factors: list[MarketFactor] = Field(
+        default_factory=list,
+        description=(
+            "Multi-factor market assessment across macro, regulatory, technology, "
+            "competition, pricing, capital markets, and M&A."
+        ),
+    )
     growth_drivers: list[MarketFinding] = Field(default_factory=list)
     competitive_risks: list[MarketFinding] = Field(default_factory=list)
     demand_risks: list[MarketFinding] = Field(default_factory=list)
     key_competitors: list[str] = Field(default_factory=list)
+    pricing_and_margin_pressure: str = Field(
+        default="",
+        description="Read-through on pricing power, input costs, and margin pressure.",
+    )
+    capital_markets_read_through: str = Field(
+        default="",
+        description="Implication of public markets, financing conditions, and buyer sentiment.",
+    )
+    m_and_a_implications: str = Field(
+        default="",
+        description="Market-driven implications for M&A strategy, valuation, and timing.",
+    )
+    scenario_analysis: list[MarketScenario] = Field(
+        default_factory=list,
+        description="Base, upside, and downside market scenarios when evidence supports them.",
+    )
+    monitoring_signposts: list[str] = Field(
+        default_factory=list,
+        description="Market indicators the deal team should monitor.",
+    )
+    coordination_notes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Specific handoffs or questions for financial, risk, and memo agents."
+        ),
+    )
     investment_thesis_contribution: str = Field(
         description="How the market view supports or weakens the investment thesis."
     )
