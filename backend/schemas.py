@@ -24,6 +24,10 @@ ToolName = Literal[
     "margin_calculator",
     "runway_calculator",
     "valuation_multiple_calculator",
+    "quality_of_earnings_review",
+    "working_capital_analysis",
+    "purchase_price_adjustment_analysis",
+    "debt_capacity_screen",
     "market_research",
     "live_market_data",
     "deal_market_news_search",
@@ -36,6 +40,8 @@ ToolName = Literal[
     "purchase_agreement_risk_mapper",
     "citation_builder",
     "memo_synthesis",
+    "investment_committee_memo_builder",
+    "evidence_reconciliation",
 ]
 
 
@@ -146,8 +152,16 @@ class FinancialFinding(BaseModel):
 
 
 class FinancialAnalysis(BaseModel):
+    headline: str = Field(
+        default="",
+        description="Investment-committee-ready financial headline.",
+    )
     executive_summary: str = Field(
         description="Concise CFO/CFA-style summary of the company's financial profile."
+    )
+    m_and_a_financial_assessment: str = Field(
+        default="",
+        description="How the financial profile affects acquisition attractiveness and process risk.",
     )
     investment_thesis_contribution: str = Field(
         description=(
@@ -157,6 +171,10 @@ class FinancialAnalysis(BaseModel):
     )
     revenue_quality: str = Field(
         description="Assessment of revenue growth, recurrence, concentration, and durability."
+    )
+    quality_of_earnings_view: str = Field(
+        default="",
+        description="View on earnings quality, normalization needs, and source reliability.",
     )
     profitability_and_margins: str = Field(
         description="Assessment of gross margin, EBITDA, operating leverage, and margin trend."
@@ -172,6 +190,18 @@ class FinancialAnalysis(BaseModel):
     )
     valuation_view: str = Field(
         description="Financial view on valuation support, pressure points, and needed comps."
+    )
+    financing_and_debt_capacity_view: str = Field(
+        default="",
+        description="Read-through for leverage capacity, financing risk, and buyer funding needs.",
+    )
+    purchase_price_adjustment_items: list[str] = Field(
+        default_factory=list,
+        description="Potential net debt, working capital, cash, debt-like item, or QoE adjustments.",
+    )
+    valuation_and_deal_structure_implications: list[str] = Field(
+        default_factory=list,
+        description="Implications for price, multiple, earnout, seller note, rollover, or escrow.",
     )
     key_metrics: list[FinancialMetric] = Field(
         default_factory=list,
@@ -196,6 +226,10 @@ class FinancialAnalysis(BaseModel):
     diligence_questions: list[str] = Field(
         default_factory=list,
         description="Specific follow-up questions for the company or deal team.",
+    )
+    coordination_notes: list[str] = Field(
+        default_factory=list,
+        description="Specific handoffs for market, risk, and memo agents.",
     )
     overall_confidence: Literal["low", "medium", "high"] = Field(
         description="Overall confidence in the financial analysis."
@@ -601,19 +635,39 @@ class MemoDataPoint(BaseModel):
 
 
 class InvestmentMemo(BaseModel):
+    headline: str = Field(
+        default="",
+        description="One-line investment committee headline.",
+    )
     executive_summary: str = Field(
         description="Short narrative summary suitable for a third-party reader."
     )
     investment_thesis: str = Field(description="Narrative investment thesis.")
     recommendation: Literal["proceed", "proceed_with_caution", "pause", "decline"]
     recommendation_rationale: str = Field(description="Plain-English rationale.")
+    decision_framework: str = Field(
+        default="",
+        description="How the committee should weigh market, financial, and risk outputs.",
+    )
     market_view: str = Field(description="Narrative market summary.")
     financial_view: str = Field(description="Narrative financial summary.")
     risk_view: str = Field(description="Narrative risk summary.")
+    valuation_and_structure_view: str = Field(
+        default="",
+        description="View on valuation, structure, earnout, escrow, rollover, or financing terms.",
+    )
     key_data_points: list[MemoDataPoint] = Field(default_factory=list)
     key_risks: list[str] = Field(default_factory=list)
+    investment_committee_conditions: list[str] = Field(
+        default_factory=list,
+        description="Conditions that should be satisfied before proceed or signing.",
+    )
     next_diligence_steps: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
+    source_limitations: list[str] = Field(
+        default_factory=list,
+        description="Important evidence gaps, unsupported inferences, and source limitations.",
+    )
     overall_confidence: Literal["low", "medium", "high"]
 
 

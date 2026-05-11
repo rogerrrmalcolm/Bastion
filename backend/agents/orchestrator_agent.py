@@ -4,14 +4,18 @@ from backend.schemas import AgentExecutionStep, OrchestrationPlan, ToolAssignmen
 
 DEFAULT_PLAN = OrchestrationPlan(
     cfo_rationale=(
-        "Run independent diligence specialists in parallel to reduce latency, "
-        "then run memo synthesis sequentially after specialist outputs exist."
+        "Run a bank-style M&A diligence sequence: establish market context, "
+        "translate that context into financial and valuation implications, "
+        "then assess acquisition risk and synthesize the investment committee memo."
     ),
     steps=[
         AgentExecutionStep(
             agent_name="market_agent",
             execution_group=1,
-            objective="Assess market position, demand drivers, competition, and growth risks.",
+            objective=(
+                "Establish market backdrop, sector structure, buyer appetite, "
+                "valuation sentiment, demand, competition, and deal timing implications."
+            ),
             tools=[
                 ToolAssignment(
                     tool_name="market_research",
@@ -46,8 +50,12 @@ DEFAULT_PLAN = OrchestrationPlan(
         ),
         AgentExecutionStep(
             agent_name="financial_agent",
-            execution_group=1,
-            objective="Build financial analysis and investment thesis contribution.",
+            execution_group=2,
+            objective=(
+                "Build financial, QoE, liquidity, valuation, and deal-structure "
+                "analysis using company data plus market-agent read-through."
+            ),
+            context_needed=["market_agent"],
             tools=[
                 ToolAssignment(
                     tool_name="financial_metric_extraction",
@@ -66,6 +74,34 @@ DEFAULT_PLAN = OrchestrationPlan(
                     purpose="Assess valuation support when EV, revenue, or EBITDA is available.",
                 ),
                 ToolAssignment(
+                    tool_name="quality_of_earnings_review",
+                    purpose=(
+                        "Identify revenue quality, normalized earnings, one-time "
+                        "items, margin durability, and source limitations."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="working_capital_analysis",
+                    purpose=(
+                        "Flag working-capital seasonality, cash conversion, and "
+                        "purchase price adjustment diligence needs."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="purchase_price_adjustment_analysis",
+                    purpose=(
+                        "Identify cash, debt, net working capital, debt-like item, "
+                        "and earnout/escrow implications."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="debt_capacity_screen",
+                    purpose=(
+                        "Assess financing risk and leverage capacity from cash "
+                        "flow, margins, growth, and market conditions."
+                    ),
+                ),
+                ToolAssignment(
                     tool_name="live_market_data",
                     purpose=(
                         "Pull explicit public comparable or company ticker data "
@@ -76,8 +112,12 @@ DEFAULT_PLAN = OrchestrationPlan(
         ),
         AgentExecutionStep(
             agent_name="risk_agent",
-            execution_group=1,
-            objective="Identify financial, operating, market, legal, and execution risks.",
+            execution_group=3,
+            objective=(
+                "Create acquisition risk matrix, diligence workplan, closing-risk "
+                "view, integration-risk view, and purchase agreement implications."
+            ),
+            context_needed=["market_agent", "financial_agent"],
             tools=[
                 ToolAssignment(
                     tool_name="risk_register",
@@ -133,8 +173,11 @@ DEFAULT_PLAN = OrchestrationPlan(
         ),
         AgentExecutionStep(
             agent_name="memo_agent",
-            execution_group=2,
-            objective="Synthesize specialist outputs into the final investment memo.",
+            execution_group=4,
+            objective=(
+                "Synthesize market, financial, and risk outputs into a disciplined "
+                "investment committee memo with recommendation, conditions, and source limits."
+            ),
             context_needed=["market_agent", "financial_agent", "risk_agent"],
             tools=[
                 ToolAssignment(
@@ -144,6 +187,20 @@ DEFAULT_PLAN = OrchestrationPlan(
                 ToolAssignment(
                     tool_name="citation_builder",
                     purpose="Preserve source-backed claims from specialist outputs.",
+                ),
+                ToolAssignment(
+                    tool_name="investment_committee_memo_builder",
+                    purpose=(
+                        "Convert specialist analysis into IC-ready recommendation, "
+                        "conditions, diligence gates, and decision logic."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="evidence_reconciliation",
+                    purpose=(
+                        "Resolve conflicts across market, financial, and risk "
+                        "outputs and expose unsupported assumptions."
+                    ),
                 ),
             ],
         ),
@@ -157,15 +214,24 @@ def run_orchestrator_agent(company_text: str) -> OrchestrationPlan:
 You are Bastion's CFO Orchestrator Agent. You manage the market, financial,
 risk, and memo agents for an AI-powered investment banking diligence workflow.
 
-Create a logical execution plan. Decide which agents can run in parallel and
-which must run sequentially. Assign only the available tools listed in the JSON
-schema. Market, financial, and risk work usually run in parallel unless one
-clearly depends on another. Memo synthesis must run after the relevant
-specialist outputs exist.
+Create a logical M&A diligence execution plan similar to a public, top-tier
+investment banking workflow. Use a sequential process when it improves
+accuracy: market context should usually inform financial assumptions, financial
+analysis should usually inform risk and deal terms, and memo synthesis must run
+after specialist outputs exist.
 
 Keep the plan efficient. Do not add unnecessary steps. Do not invent agents or
 tools. The execution_group field controls order: same group runs in parallel;
 higher groups wait for lower groups.
+
+Prefer this sequence unless the company context clearly justifies otherwise:
+1. market_agent: market, buyer universe, valuation sentiment, and sector context
+2. financial_agent: financial quality, valuation, liquidity, and deal-structure implications
+3. risk_agent: acquisition risk, diligence workplan, closing risk, and purchase agreement implications
+4. memo_agent: investment committee synthesis and recommendation
+
+Every step should specify the upstream context it depends on and assign only
+tools that materially improve the answer.
 
 Company context:
 {company_text}
