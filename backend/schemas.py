@@ -25,6 +25,9 @@ ToolName = Literal[
     "runway_calculator",
     "valuation_multiple_calculator",
     "market_research",
+    "live_market_data",
+    "deal_market_news_search",
+    "public_market_proxy_analysis",
     "risk_register",
     "citation_builder",
     "memo_synthesis",
@@ -280,6 +283,28 @@ class MarketScenario(BaseModel):
     )
 
 
+class MarketResearchSource(BaseModel):
+    source_type: Literal["market_data", "news_search", "web_search", "company_context"] = (
+        Field(description="Type of source used in the market analysis.")
+    )
+    title: str = Field(description="Short source title or data point label.")
+    publisher: str | None = Field(
+        default=None,
+        description="Publisher, endpoint, or data provider name.",
+    )
+    url: str | None = Field(
+        default=None,
+        description="Source URL when available.",
+    )
+    relevance: str = Field(
+        description="Why this source matters for the M&A market analysis."
+    )
+    as_of: str | None = Field(
+        default=None,
+        description="Timestamp or publication date when available.",
+    )
+
+
 class MarketAnalysis(BaseModel):
     headline: str = Field(
         default="",
@@ -326,6 +351,13 @@ class MarketAnalysis(BaseModel):
     monitoring_signposts: list[str] = Field(
         default_factory=list,
         description="Market indicators the deal team should monitor.",
+    )
+    research_sources: list[MarketResearchSource] = Field(
+        default_factory=list,
+        description=(
+            "Live market data, current news/search sources, and company-context "
+            "references that informed the market analysis."
+        ),
     )
     coordination_notes: list[str] = Field(
         default_factory=list,

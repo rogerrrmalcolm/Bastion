@@ -1,8 +1,26 @@
+import json
+
 from backend.gemini_client import call_gemini_structured
 from backend.schemas import MarketAnalysis
+from backend.tools.market_research import build_market_research_context
+
+
+def _live_market_research_context(company_text: str) -> str:
+    try:
+        return build_market_research_context(company_text).to_prompt_json()
+    except Exception as error:
+        return json.dumps(
+            {
+                "error": "Live market research tools failed",
+                "detail": str(error),
+            },
+            indent=2,
+        )
 
 
 def run_market_agent(company_text: str) -> MarketAnalysis:
+    market_research_context = _live_market_research_context(company_text)
+
     return call_gemini_structured(
         f"""
 You are Bastion's Market Analyst Agent: a senior market analyst at a top-tier
@@ -41,6 +59,20 @@ Analyze the company through these lenses when relevant:
 - strategic and sponsor buyer appetite, deal timing, and M&A valuation impact
 - base/upside/downside scenarios and monitoring signposts
 
+You have live market-data and search tools. The tool packet below is the only
+live external context you may treat as source-backed. Prioritize market signals
+that directly affect this M&A deal: valuation, buyer universe, financing
+conditions, timing, regulatory risk, demand, pricing, margin pressure,
+competitive intensity, and strategic rationale. Use generic market proxies only
+as deal-relevant indicators, not as direct company evidence.
+
+When using tool output:
+- cite quote_snapshots as market_data sources with the provider URL and as_of
+- cite news_results as news_search sources with title, publisher, URL, and date
+- include the most important sources in research_sources
+- prefer source-backed search and market-data points over broad inference
+- if search results are weak, stale, or only indirectly relevant, say so
+
 Fill coordination_notes with specific handoffs for other agents:
 - financial_agent: market factors that should be tested against revenue, margin,
   valuation, or capital needs
@@ -52,6 +84,9 @@ third-party investment committee reader.
 
 Company context:
 {company_text}
+
+Live market-data and search tool packet:
+{market_research_context}
 """,
         MarketAnalysis,
     )

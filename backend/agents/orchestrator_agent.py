@@ -18,6 +18,27 @@ DEFAULT_PLAN = OrchestrationPlan(
                     purpose="Identify industry and competitive context from available sources.",
                 ),
                 ToolAssignment(
+                    tool_name="live_market_data",
+                    purpose=(
+                        "Pull public-company and market proxy price moves that "
+                        "affect valuation, financing, and buyer appetite."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="deal_market_news_search",
+                    purpose=(
+                        "Search current deal, sector, regulatory, demand, and "
+                        "competitive news relevant to the M&A process."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="public_market_proxy_analysis",
+                    purpose=(
+                        "Use sector ETFs, equity indices, and credit proxies as "
+                        "transaction-market indicators when the target is private."
+                    ),
+                ),
+                ToolAssignment(
                     tool_name="document_search",
                     purpose="Find market-related evidence in provided company context.",
                 ),
@@ -44,6 +65,13 @@ DEFAULT_PLAN = OrchestrationPlan(
                     tool_name="valuation_multiple_calculator",
                     purpose="Assess valuation support when EV, revenue, or EBITDA is available.",
                 ),
+                ToolAssignment(
+                    tool_name="live_market_data",
+                    purpose=(
+                        "Pull explicit public comparable or company ticker data "
+                        "to frame current valuation and trading-context signals."
+                    ),
+                ),
             ],
         ),
         AgentExecutionStep(
@@ -58,6 +86,13 @@ DEFAULT_PLAN = OrchestrationPlan(
                 ToolAssignment(
                     tool_name="document_search",
                     purpose="Find source-backed risk evidence in provided context.",
+                ),
+                ToolAssignment(
+                    tool_name="deal_market_news_search",
+                    purpose=(
+                        "Search current legal, regulatory, cybersecurity, and "
+                        "sector-risk signals that could affect the M&A process."
+                    ),
                 ),
             ],
         ),
