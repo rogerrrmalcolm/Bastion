@@ -9,7 +9,7 @@ from google.genai import errors
 from pydantic import BaseModel
 
 DEFAULT_MODEL = "gemini-2.5-flash"
-MAX_RETRY_ATTEMPTS = 3
+MAX_RETRY_ATTEMPTS = 5
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")

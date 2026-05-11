@@ -29,6 +29,11 @@ ToolName = Literal[
     "deal_market_news_search",
     "public_market_proxy_analysis",
     "risk_register",
+    "acquisition_risk_matrix",
+    "regulatory_risk_search",
+    "cyber_diligence_screen",
+    "integration_risk_assessment",
+    "purchase_agreement_risk_mapper",
     "citation_builder",
     "memo_synthesis",
 ]
@@ -376,13 +381,22 @@ class RiskItem(BaseModel):
     title: str = Field(description="Short risk title.")
     description: str = Field(description="Plain-English description of the risk.")
     category: Literal[
+        "commercial",
         "financial",
         "market",
         "legal",
+        "regulatory",
+        "tax",
         "operational",
         "technology",
+        "cybersecurity",
+        "data_privacy",
+        "integration",
+        "human_capital",
         "governance",
         "execution",
+        "reputation",
+        "transaction_process",
         "other",
     ]
     severity: Literal["low", "medium", "high"]
@@ -392,11 +406,188 @@ class RiskItem(BaseModel):
     citation: FinancialCitation | None = None
 
 
+class AcquisitionRiskFactor(BaseModel):
+    risk_area: Literal[
+        "commercial",
+        "financial",
+        "legal",
+        "regulatory",
+        "tax",
+        "technology",
+        "cybersecurity",
+        "data_privacy",
+        "operations",
+        "integration",
+        "human_capital",
+        "governance",
+        "financing",
+        "reputation",
+        "transaction_process",
+        "other",
+    ] = Field(description="Primary acquisition-risk area.")
+    finding: str = Field(description="Specific risk finding.")
+    source_signal: str = Field(
+        description=(
+            "Source-backed signal, tool result, or explicitly labeled analyst inference."
+        )
+    )
+    severity: Literal["low", "medium", "high"]
+    likelihood: Literal["low", "medium", "high"]
+    diligence_status: Literal["source_backed", "analyst_inference", "needs_diligence"] = (
+        Field(description="Evidence status for the risk.")
+    )
+    deal_impact: str = Field(
+        description="Effect on valuation, process certainty, buyer appetite, or closing risk."
+    )
+    purchase_agreement_implication: str = Field(
+        description="Likely impact on reps, warranties, covenants, indemnity, escrow, or conditions."
+    )
+    recommended_action: str = Field(description="Concrete diligence or mitigation action.")
+    diligence_owner: Literal[
+        "commercial",
+        "financial",
+        "legal",
+        "tax",
+        "regulatory",
+        "cyber",
+        "technology",
+        "operations",
+        "human_capital",
+        "management",
+        "deal_team",
+    ] = Field(description="Workstream that should own follow-up.")
+    citation: FinancialCitation | None = None
+
+
+class DiligenceWorkstream(BaseModel):
+    workstream: Literal[
+        "commercial",
+        "financial",
+        "legal",
+        "tax",
+        "regulatory",
+        "cyber",
+        "technology",
+        "operations",
+        "human_capital",
+        "integration",
+        "management",
+        "transaction_process",
+    ] = Field(description="Diligence workstream.")
+    priority: Literal["low", "medium", "high"]
+    scope: str = Field(description="What this workstream must test.")
+    key_questions: list[str] = Field(default_factory=list)
+    required_materials: list[str] = Field(default_factory=list)
+    gating_decision: str = Field(
+        description="What decision this diligence workstream should enable."
+    )
+
+
+class RiskMitigationAction(BaseModel):
+    action: str = Field(description="Specific mitigation or deal-protection action.")
+    owner: Literal[
+        "buyer",
+        "seller",
+        "legal_counsel",
+        "financial_advisor",
+        "management",
+        "deal_team",
+        "third_party_specialist",
+    ] = Field(description="Party best positioned to own the action.")
+    timing: Literal["pre_loi", "confirmatory_diligence", "signing", "pre_close", "post_close"]
+    priority: Literal["low", "medium", "high"]
+    expected_effect: str = Field(description="How the action reduces risk.")
+
+
+class AcquisitionRiskScenario(BaseModel):
+    name: str = Field(description="Short scenario name.")
+    probability: Literal["low", "medium", "high"]
+    trigger_events: list[str] = Field(default_factory=list)
+    downside_case: str = Field(description="What goes wrong in this scenario.")
+    deal_impact: str = Field(description="Impact on valuation, timing, closing, or integration.")
+    mitigation_response: str = Field(description="How the deal team should respond.")
+
+
+class RiskResearchSource(BaseModel):
+    source_type: Literal["company_context", "internal_risk_signal", "news_search"] = Field(
+        description="Type of risk source used."
+    )
+    title: str = Field(description="Short source or risk-signal title.")
+    publisher: str | None = Field(default=None)
+    url: str | None = Field(default=None)
+    relevance: str = Field(description="Why this source matters to acquisition risk.")
+    as_of: str | None = Field(default=None)
+
+
 class RiskAnalysis(BaseModel):
+    headline: str = Field(
+        default="",
+        description="Board-level acquisition-risk headline.",
+    )
     executive_summary: str = Field(description="Concise risk view in plain English.")
+    acquisition_risk_summary: str = Field(
+        default="",
+        description="Overall acquisition risk framing for buyer, seller, and deal team.",
+    )
+    overall_deal_risk_score: Literal["low", "medium", "high", "critical"] = Field(
+        default="medium",
+        description="Overall acquisition risk score before mitigation.",
+    )
     top_risks: list[RiskItem] = Field(default_factory=list)
     red_flags: list[RiskItem] = Field(default_factory=list)
+    deal_breaker_risks: list[RiskItem] = Field(
+        default_factory=list,
+        description="Risks that could justify pausing, repricing, or abandoning the deal.",
+    )
+    acquisition_risk_factors: list[AcquisitionRiskFactor] = Field(
+        default_factory=list,
+        description="Detailed acquisition risk matrix for the deal team.",
+    )
     diligence_priorities: list[str] = Field(default_factory=list)
+    diligence_workplan: list[DiligenceWorkstream] = Field(
+        default_factory=list,
+        description="Priority diligence workstreams and required materials.",
+    )
+    mitigation_plan: list[RiskMitigationAction] = Field(
+        default_factory=list,
+        description="Deal protections and mitigations to pursue.",
+    )
+    risk_scenarios: list[AcquisitionRiskScenario] = Field(
+        default_factory=list,
+        description="Base/downside risk scenarios for acquisition planning.",
+    )
+    purchase_agreement_implications: list[str] = Field(
+        default_factory=list,
+        description="Expected impacts on reps, warranties, covenants, indemnity, escrow, or closing conditions.",
+    )
+    valuation_and_terms_implications: list[str] = Field(
+        default_factory=list,
+        description="How risk should affect price, structure, earnout, escrow, or financing terms.",
+    )
+    integration_risk_view: str = Field(
+        default="",
+        description="Risk view on post-close integration, operating continuity, and synergy capture.",
+    )
+    regulatory_approval_view: str = Field(
+        default="",
+        description="Risk view on regulatory approvals, antitrust, sector regulation, or foreign investment review.",
+    )
+    cyber_data_privacy_view: str = Field(
+        default="",
+        description="Risk view on cybersecurity, data privacy, and sensitive data handling.",
+    )
+    management_governance_view: str = Field(
+        default="",
+        description="Risk view on management quality, controls, governance, and key-person dependency.",
+    )
+    risk_sources: list[RiskResearchSource] = Field(
+        default_factory=list,
+        description="Risk sources used from company context and live news/search tools.",
+    )
+    coordination_notes: list[str] = Field(
+        default_factory=list,
+        description="Handoffs for financial, market, and memo agents.",
+    )
     missing_information: list[str] = Field(default_factory=list)
     overall_risk_rating: Literal["low", "medium", "high"]
     overall_confidence: Literal["low", "medium", "high"]

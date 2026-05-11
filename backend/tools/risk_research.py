@@ -16,18 +16,80 @@ from backend.tools.market_research import (
 
 
 RISK_KEYWORDS = {
+    "commercial": [
+        "customer concentration",
+        "concentration",
+        "top customer",
+        "largest customer",
+        "pipeline",
+        "churn",
+        "retention",
+        "renewal",
+        "pricing pressure",
+    ],
     "customer_concentration": [
         "customer concentration",
         "concentration",
         "top customer",
         "largest customer",
     ],
-    "retention": ["churn", "retention", "renewal", "NRR", "GRR"],
+    "retention": ["churn", "retention", "renewal", "NRR", "GRR", "key customer"],
     "liquidity": ["cash", "burn", "runway", "liquidity", "debt", "covenant"],
-    "regulatory": ["regulatory", "compliance", "HIPAA", "FDA", "SEC", "privacy"],
-    "legal": ["litigation", "lawsuit", "investigation", "settlement"],
-    "security": ["cybersecurity", "breach", "data security", "SOC2", "PHI"],
-    "execution": ["integration", "sales hiring", "pipeline", "implementation"],
+    "regulatory": [
+        "regulatory",
+        "compliance",
+        "HIPAA",
+        "FDA",
+        "SEC",
+        "privacy",
+        "antitrust",
+        "HSR",
+        "CFIUS",
+        "foreign investment",
+        "approval",
+    ],
+    "legal": [
+        "litigation",
+        "lawsuit",
+        "investigation",
+        "settlement",
+        "intellectual property",
+        "IP",
+        "contract dispute",
+    ],
+    "cybersecurity": [
+        "cybersecurity",
+        "breach",
+        "data security",
+        "SOC2",
+        "PHI",
+        "ransomware",
+        "incident response",
+    ],
+    "data_privacy": ["privacy", "GDPR", "CCPA", "HIPAA", "PHI", "personal data"],
+    "integration": [
+        "integration",
+        "synergy",
+        "systems migration",
+        "change of control",
+        "customer consent",
+    ],
+    "human_capital": [
+        "key person",
+        "founder dependency",
+        "employee retention",
+        "compensation",
+        "sales hiring",
+    ],
+    "governance": ["controls", "governance", "board", "management", "audit"],
+    "transaction_process": [
+        "exclusivity",
+        "earnout",
+        "escrow",
+        "indemnity",
+        "representation",
+        "warranty",
+    ],
     "market": ["competition", "pricing pressure", "demand", "macro", "recession"],
 }
 
@@ -57,12 +119,19 @@ def _context_window(text: str, start: int, end: int, width: int = 110) -> str:
     return " ".join(text[max(0, start - width) : min(len(text), end + width)].split())
 
 
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"(?<![A-Za-z0-9]){re.escape(keyword)}(?![A-Za-z0-9])",
+        flags=re.IGNORECASE,
+    )
+
+
 def extract_internal_risk_signals(company_text: str) -> list[InternalRiskSignal]:
     signals: list[InternalRiskSignal] = []
     seen: set[tuple[str, str]] = set()
     for category, keywords in RISK_KEYWORDS.items():
         for keyword in keywords:
-            pattern = re.compile(re.escape(keyword), flags=re.IGNORECASE)
+            pattern = _keyword_pattern(keyword)
             for match in pattern.finditer(company_text):
                 excerpt = _context_window(company_text, match.start(), match.end())
                 key = (category, excerpt)
@@ -90,12 +159,16 @@ def build_risk_search_queries(company_text: str) -> list[tuple[str, str]]:
         queries.extend(
             [
                 (
-                    f'"{company}" litigation investigation regulatory cybersecurity',
+                    f'"{company}" acquisition risk litigation investigation regulatory cybersecurity',
                     "direct company legal, regulatory, and security risk",
                 ),
                 (
-                    f'"{company}" customer churn outage breach compliance',
+                    f'"{company}" customer churn outage breach compliance change of control',
                     "direct company operating and customer risk",
+                ),
+                (
+                    f'"{company}" merger acquisition antitrust approval lawsuit',
+                    "direct acquisition approval and transaction litigation risk",
                 ),
             ]
         )
@@ -104,12 +177,16 @@ def build_risk_search_queries(company_text: str) -> list[tuple[str, str]]:
         queries.extend(
             [
                 (
-                    f'"{sector}" regulatory risk compliance litigation',
+                    f'"{sector}" M&A regulatory risk antitrust compliance litigation',
                     "sector regulatory and legal risk",
                 ),
                 (
-                    f'"{sector}" cybersecurity breach data privacy risk',
+                    f'"{sector}" M&A cybersecurity breach data privacy risk',
                     "sector cybersecurity and data risk",
+                ),
+                (
+                    f'"{sector}" acquisition integration risk customer retention synergies',
+                    "sector integration and synergy risk",
                 ),
             ]
         )

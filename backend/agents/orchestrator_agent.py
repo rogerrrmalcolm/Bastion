@@ -84,6 +84,13 @@ DEFAULT_PLAN = OrchestrationPlan(
                     purpose="Prioritize risks by severity and deal impact.",
                 ),
                 ToolAssignment(
+                    tool_name="acquisition_risk_matrix",
+                    purpose=(
+                        "Map commercial, legal, regulatory, cyber, integration, "
+                        "financial, and transaction-process risks to M&A impact."
+                    ),
+                ),
+                ToolAssignment(
                     tool_name="document_search",
                     purpose="Find source-backed risk evidence in provided context.",
                 ),
@@ -92,6 +99,34 @@ DEFAULT_PLAN = OrchestrationPlan(
                     purpose=(
                         "Search current legal, regulatory, cybersecurity, and "
                         "sector-risk signals that could affect the M&A process."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="regulatory_risk_search",
+                    purpose=(
+                        "Check antitrust, sector approval, privacy, and foreign "
+                        "investment risks relevant to closing certainty."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="cyber_diligence_screen",
+                    purpose=(
+                        "Screen cyber, data privacy, and sensitive-data risks that "
+                        "could affect diligence, indemnity, or integration."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="integration_risk_assessment",
+                    purpose=(
+                        "Assess post-close integration, synergy, customer retention, "
+                        "and operating-continuity risks."
+                    ),
+                ),
+                ToolAssignment(
+                    tool_name="purchase_agreement_risk_mapper",
+                    purpose=(
+                        "Translate material risks into reps, warranties, covenants, "
+                        "escrow, indemnity, earnout, and closing-condition implications."
                     ),
                 ),
             ],
