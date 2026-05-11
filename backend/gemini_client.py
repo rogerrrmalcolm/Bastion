@@ -3,10 +3,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-from pydantic import BaseModel, ValidationError
-
+from google import genai 
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 
