@@ -66,8 +66,8 @@ class AgentExecutionStep(BaseModel):
     execution_group: int = Field(
         ge=1,
         description=(
-            "Steps with the same group can run in parallel. Higher groups run "
-            "after lower groups complete."
+            "Ordering group for the diligence plan. Use distinct groups for "
+            "Bastion's core sequence: market, financial, risk, then memo."
         ),
     )
     objective: str = Field(description="Specific output this agent must produce.")

@@ -47,6 +47,8 @@ SPECIALIST_RUNNERS = {
     "risk_agent": run_risk_agent,
 }
 
+CORE_SPECIALIST_SEQUENCE = ("market_agent", "financial_agent", "risk_agent")
+
 SYNTHESIS_RUNNERS = {
     "memo_agent": run_memo_agent,
 }
@@ -91,27 +93,12 @@ def run_planned_specialist_agents(
     plan: OrchestrationPlan,
 ) -> tuple[MarketAnalysis, FinancialAnalysis, RiskAnalysis]:
     outputs: dict[str, object] = {}
-    specialist_steps = [
-        _step_for_agent(plan, agent_name) for agent_name in SPECIALIST_RUNNERS
-    ]
 
-    for execution_group in sorted({step.execution_group for step in specialist_steps}):
-        group_steps = [
-            step for step in specialist_steps if step.execution_group == execution_group
-        ]
-
-        parallel_agent = ParallelAgent(
-            {
-                step.agent_name: (
-                    lambda step=step: SPECIALIST_RUNNERS[step.agent_name](
-                        _agent_context(company_text, step, outputs)
-                    )
-                )
-                for step in group_steps
-            }
+    for agent_name in CORE_SPECIALIST_SEQUENCE:
+        step = _step_for_agent(plan, agent_name)
+        outputs[agent_name] = SPECIALIST_RUNNERS[agent_name](
+            _agent_context(company_text, step, outputs)
         )
-
-        outputs.update(parallel_agent.run())
 
     return (
         outputs["market_agent"],

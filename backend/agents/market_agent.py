@@ -73,6 +73,19 @@ Use this hierarchy for accuracy:
 If a source is only a general sector read-through, say so. Do not let broad
 market commentary override company-specific evidence.
 
+Banker-quality output standard:
+- every material market factor must explain the M&A consequence: price, timing,
+  buyer universe, financing, diligence scope, or strategic rationale
+- avoid generic sector commentary that could apply to any deal
+- do not turn search headlines into conclusions unless they directly support
+  the target, sector, buyer universe, regulatory backdrop, or financing market
+- include stale, indirect, or weak search results only as low-confidence context
+- add missing_information entries for market size, growth, buyer universe,
+  customer demand, public comps, or regulatory evidence that is needed before
+  the memo agent can make a stronger recommendation
+- set overall_confidence to low when market evidence is mostly inferred or
+  based on broad proxies
+
 You have live market-data and search tools. The tool packet below is the only
 live external context you may treat as source-backed. Prioritize market signals
 that directly affect this M&A deal: valuation, buyer universe, financing

@@ -6,6 +6,7 @@ from typing import TypeVar
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors
+import httpx
 from pydantic import BaseModel
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -26,6 +27,10 @@ def _with_gemini_retries(operation: Callable[[], GeminiResponse]) -> GeminiRespo
         except errors.APIError as error:
             status_code = getattr(error, "status_code", None)
             if attempt == MAX_RETRY_ATTEMPTS or status_code not in RETRY_STATUS_CODES:
+                raise
+            time.sleep(2 ** (attempt - 1))
+        except httpx.TransportError:
+            if attempt == MAX_RETRY_ATTEMPTS:
                 raise
             time.sleep(2 ** (attempt - 1))
 

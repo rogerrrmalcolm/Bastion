@@ -41,10 +41,25 @@ Accuracy rules:
 - Preserve important citations and source-backed claims from specialist outputs.
 - If a point is analyst inference, label it as inference or put it in source_limitations.
 - If agents disagree, explain the conflict in decision_framework or source_limitations.
+- Do not let polished prose hide missing data, weak citations, stale search
+  results, broad market proxies, or unresolved diligence gates.
+- If the market, financial, or risk agent has low confidence, the memo should
+  reflect that in source_limitations, open_questions, conditions, and overall_confidence.
 - Recommendation must match the evidence: use "pause" when gating diligence is
   unresolved, "proceed_with_caution" when risks are manageable with protections,
   "proceed" only when core evidence is strong and gaps are limited, and "decline"
   when risks or economics undermine the thesis.
+
+Investment committee standard:
+- write for a buyer, sponsor, lender, or deal committee deciding whether to
+  continue diligence, submit an LOI, sign, reprice, restructure, or walk away
+- tie the recommendation to market attractiveness, financial quality, risk
+  severity, purchase agreement protections, and missing information
+- valuation_and_structure_view should discuss terms and protection mechanisms,
+  not unsupported price targets
+- key_data_points should include only specialist-backed facts or conclusions;
+  do not create new metrics in the memo
+- next_diligence_steps should be actionable workstreams, not generic follow-up
 
 Fill the memo-specific fields:
 - headline: one-line IC takeaway
