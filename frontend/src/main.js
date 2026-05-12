@@ -84,7 +84,7 @@ const routeCost = document.querySelector('#route-cost')
 const responseMode = document.querySelector('#response-mode')
 
 const scene = new THREE.Scene()
-scene.fog = new THREE.FogExp2(0x02030a, 0.018)
+scene.fog = new THREE.FogExp2(0xf4efe6, 0.015)
 
 const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 220)
 camera.position.set(0, 0, 9)
@@ -95,7 +95,7 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
 })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-renderer.setClearColor(0x02030a, 1)
+renderer.setClearColor(0xf4efe6, 1)
 sceneRoot.appendChild(renderer.domElement)
 
 const clock = new THREE.Clock()
@@ -107,11 +107,12 @@ const introDuration = 2.85
 let hasArrived = false
 
 const palette = {
-  blue: new THREE.Color(0x7dd3fc),
-  violet: new THREE.Color(0xa78bfa),
-  amber: new THREE.Color(0xfbbf24),
-  red: new THREE.Color(0xfb7185),
-  white: new THREE.Color(0xf8fafc),
+  espresso: new THREE.Color(0x2b1a12),
+  brown: new THREE.Color(0x5b3a29),
+  copper: new THREE.Color(0x9b6a35),
+  sand: new THREE.Color(0xd7c4aa),
+  ivory: new THREE.Color(0xf4efe6),
+  white: new THREE.Color(0xffffff),
 }
 
 const agentGraph = {
@@ -160,6 +161,14 @@ function randomBetween(min, max) {
 function smoothstep(edge0, edge1, value) {
   const x = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)))
   return x * x * (3 - 2 * x)
+}
+
+function tunnelPathOffset(z, elapsed = 0) {
+  const t = z * 0.042 + elapsed * 0.72
+  return {
+    x: Math.sin(t) * 1.45 + Math.sin(t * 0.47 + 1.2) * 0.82,
+    y: Math.cos(t * 0.84 + 0.35) * 0.88 + Math.sin(t * 1.34 - 0.7) * 0.42,
+  }
 }
 
 function edgeId(from, to) {
@@ -363,9 +372,10 @@ function starPosition(z = randomBetween(farLimit, nearLimit)) {
   const angle = Math.random() * Math.PI * 2
   const radius = randomBetween(3.3, 9.5)
   const wobble = Math.sin(z * 0.1 + angle * 2) * 0.55
+  const path = tunnelPathOffset(z)
   return {
-    x: Math.cos(angle) * (radius + wobble),
-    y: Math.sin(angle) * (radius + wobble),
+    x: path.x + Math.cos(angle) * (radius + wobble),
+    y: path.y + Math.sin(angle) * (radius + wobble),
     z,
   }
 }
@@ -374,7 +384,7 @@ function makeStarField() {
   const count = 3600
   const positions = new Float32Array(count * 3)
   const colors = new Float32Array(count * 3)
-  const colorChoices = [palette.blue, palette.violet, palette.amber, palette.red, palette.white]
+  const colorChoices = [palette.espresso, palette.brown, palette.copper, palette.sand, palette.white]
 
   for (let i = 0; i < count; i += 1) {
     const point = starPosition()
@@ -393,12 +403,11 @@ function makeStarField() {
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
 
   const material = new THREE.PointsMaterial({
-    size: 0.045,
+    size: 0.05,
     vertexColors: true,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.72,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
   })
 
   return new THREE.Points(geometry, material)
@@ -425,33 +434,33 @@ function makeTunnelRings() {
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points)
-    const hueColor = i % 4 === 0 ? 0x7dd3fc : i % 4 === 1 ? 0xa78bfa : i % 4 === 2 ? 0xfbbf24 : 0xfb7185
+    const hueColor = i % 4 === 0 ? 0x5b3a29 : i % 4 === 1 ? 0x9b6a35 : i % 4 === 2 ? 0x2b1a12 : 0xd7c4aa
     const material = new THREE.LineBasicMaterial({
       color: hueColor,
       transparent: true,
-      opacity: 0.16,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.28,
       depthWrite: false,
     })
     const ring = new THREE.LineLoop(geometry, material)
     ring.userData.baseZ = z
     ring.userData.speed = randomBetween(9, 13)
+    ring.userData.pathPhase = randomBetween(-0.4, 0.4)
     group.add(ring)
   }
 
   return group
 }
 
-function makeSymbolTexture(label, color = '#fbbf24') {
+function makeSymbolTexture(label, color = '#5b3a29') {
   const canvas = document.createElement('canvas')
   canvas.width = 256
   canvas.height = 128
   const context = canvas.getContext('2d')
 
   context.clearRect(0, 0, canvas.width, canvas.height)
-  context.shadowColor = color
-  context.shadowBlur = 22
-  context.fillStyle = 'rgba(2, 6, 23, 0.58)'
+  context.shadowColor = 'rgba(91, 58, 41, 0.45)'
+  context.shadowBlur = 18
+  context.fillStyle = 'rgba(255, 255, 255, 0.86)'
   context.strokeStyle = color
   context.lineWidth = 3
   context.beginPath()
@@ -461,7 +470,7 @@ function makeSymbolTexture(label, color = '#fbbf24') {
   context.font = label.length > 3 ? '700 44px Arial' : '800 56px Arial'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
-  context.fillStyle = '#f8fafc'
+  context.fillStyle = '#2b1a12'
   context.fillText(label, 128, 66)
 
   const texture = new THREE.CanvasTexture(canvas)
@@ -472,26 +481,28 @@ function makeSymbolTexture(label, color = '#fbbf24') {
 function symbolPosition(z = randomBetween(-128, -26)) {
   const angle = Math.random() * Math.PI * 2
   const radius = randomBetween(1.65, 4.25)
+  const path = tunnelPathOffset(z)
   return {
-    x: Math.cos(angle) * radius,
-    y: Math.sin(angle) * radius,
+    x: path.x + Math.cos(angle) * radius,
+    y: path.y + Math.sin(angle) * radius,
     z,
+    angle,
+    radius,
   }
 }
 
 function makeFinanceSymbols() {
   const group = new THREE.Group()
   const labels = ['$', 'M&A', 'DCF', 'IRR', 'IPO', 'NWC', 'EV', 'EBITDA', 'WACC', 'LOI', 'ROI']
-  const colors = ['#fbbf24', '#7dd3fc', '#a78bfa', '#fb7185']
+  const colors = ['#5b3a29', '#9b6a35', '#2b1a12', '#d7c4aa']
 
   for (let i = 0; i < 62; i += 1) {
     const label = labels[i % labels.length]
     const material = new THREE.SpriteMaterial({
       map: makeSymbolTexture(label, colors[i % colors.length]),
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.86,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
     })
     const sprite = new THREE.Sprite(material)
     const position = symbolPosition(randomBetween(-104, -8))
@@ -500,6 +511,9 @@ function makeFinanceSymbols() {
     sprite.userData.speed = randomBetween(20, 32)
     sprite.userData.spin = randomBetween(-0.9, 0.9)
     sprite.userData.baseScale = sprite.scale.x
+    sprite.userData.angle = position.angle
+    sprite.userData.radius = position.radius
+    sprite.userData.orbitSpeed = randomBetween(0.25, 0.7)
     group.add(sprite)
   }
 
@@ -512,28 +526,25 @@ function makeArrivalGate() {
   const torus = new THREE.Mesh(
     new THREE.TorusGeometry(2.25, 0.035, 16, 180),
     new THREE.MeshBasicMaterial({
-      color: 0x7dd3fc,
+      color: 0x5b3a29,
       transparent: true,
       opacity: 0.85,
-      blending: THREE.AdditiveBlending,
     }),
   )
   const inner = new THREE.Mesh(
     new THREE.TorusGeometry(1.66, 0.018, 12, 180),
     new THREE.MeshBasicMaterial({
-      color: 0xfbbf24,
+      color: 0x9b6a35,
       transparent: true,
       opacity: 0.7,
-      blending: THREE.AdditiveBlending,
     }),
   )
   const halo = new THREE.Mesh(
     new THREE.CircleGeometry(1.82, 96),
     new THREE.MeshBasicMaterial({
-      color: 0x172554,
+      color: 0xf4efe6,
       transparent: true,
-      opacity: 0.28,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.42,
       depthWrite: false,
     }),
   )
@@ -549,7 +560,7 @@ const arrivalGate = makeArrivalGate()
 const financeSymbols = makeFinanceSymbols()
 scene.add(stars, rings, arrivalGate, financeSymbols)
 
-const ambient = new THREE.AmbientLight(0x93c5fd, 0.45)
+const ambient = new THREE.AmbientLight(0xffffff, 0.56)
 scene.add(ambient)
 
 function markArrived() {
@@ -585,7 +596,11 @@ function animate() {
   const speed = 30 + (1 - introProgress) * 34
 
   for (let i = 0; i < positions.length; i += 3) {
+    const priorPath = tunnelPathOffset(positions[i + 2], elapsed - delta)
     positions[i + 2] += speed * delta * (1 + Math.abs(positions[i]) * 0.025)
+    const nextPath = tunnelPathOffset(positions[i + 2], elapsed)
+    positions[i] += (nextPath.x - priorPath.x) * 0.34
+    positions[i + 1] += (nextPath.y - priorPath.y) * 0.34
     const twist = delta * 0.1
     const x = positions[i]
     const y = positions[i + 1]
@@ -600,8 +615,14 @@ function animate() {
 
   rings.children.forEach((ring, index) => {
     ring.position.z += ring.userData.speed * delta * (1 + (1 - introProgress) * 1.65)
+    const ringPath = tunnelPathOffset(ring.position.z + ring.userData.pathPhase, elapsed)
+    const pathIntensity = hasArrived ? 0.46 : 1
+    ring.position.x = ringPath.x * pathIntensity
+    ring.position.y = ringPath.y * pathIntensity
     ring.rotation.z += delta * (index % 2 === 0 ? 0.2 : -0.12)
-    ring.material.opacity = 0.08 + Math.max(0, 1 - Math.abs(ring.position.z) / 80) * 0.2
+    ring.rotation.x = Math.sin(elapsed * 0.45 + index * 0.12) * 0.09 * pathIntensity
+    ring.rotation.y = Math.cos(elapsed * 0.36 + index * 0.1) * 0.08 * pathIntensity
+    ring.material.opacity = 0.09 + Math.max(0, 1 - Math.abs(ring.position.z) / 80) * 0.22
 
     if (ring.position.z > nearLimit) {
       ring.position.z = farLimit
@@ -611,6 +632,10 @@ function animate() {
   const symbolFade = 1 - smoothstep(2.35, introDuration + 0.35, elapsed)
   financeSymbols.children.forEach((sprite) => {
     sprite.position.z += sprite.userData.speed * delta
+    const path = tunnelPathOffset(sprite.position.z, elapsed)
+    const orbit = sprite.userData.angle + elapsed * sprite.userData.orbitSpeed + sprite.position.z * 0.045
+    sprite.position.x = path.x + Math.cos(orbit) * sprite.userData.radius
+    sprite.position.y = path.y + Math.sin(orbit * 0.94) * sprite.userData.radius * 0.78
     sprite.material.rotation += sprite.userData.spin * delta
     sprite.material.opacity = 0.92 * symbolFade
     sprite.scale.setScalar(sprite.userData.baseScale * (1 + Math.max(0, sprite.position.z) * 0.035))
@@ -620,11 +645,17 @@ function animate() {
       sprite.position.set(position.x, position.y, position.z)
       sprite.userData.speed = randomBetween(24, 40)
       sprite.userData.baseScale = randomBetween(0.42, 0.82)
+      sprite.userData.angle = position.angle
+      sprite.userData.radius = position.radius
+      sprite.userData.orbitSpeed = randomBetween(0.25, 0.7)
     }
   })
 
+  const gatePath = tunnelPathOffset(arrivalGate.position.z, elapsed)
   arrivalGate.rotation.z = elapsed * 0.18
   arrivalGate.position.z = -76 + introProgress * 48 + Math.sin(elapsed * 0.7) * 1.4
+  arrivalGate.position.x = gatePath.x * 0.58
+  arrivalGate.position.y = gatePath.y * 0.58
   arrivalGate.scale.setScalar(0.72 + introProgress * 0.46 + Math.sin(elapsed * 1.3) * 0.035)
 
   if (readoutProgress) {
@@ -635,14 +666,22 @@ function animate() {
     markArrived()
   }
 
-  const tunnelDrift = Math.sin(elapsed * 2.2) * (1 - introProgress) * 0.28
-  const targetX = pointer.x * (hasArrived ? 0.7 : 0.32) + tunnelDrift
-  const targetY = pointer.y * (hasArrived ? 0.42 : 0.24) + Math.cos(elapsed * 2.7) * (1 - introProgress) * 0.18
+  const cameraPath = tunnelPathOffset(-18 + introProgress * 10, elapsed)
+  const lookPath = tunnelPathOffset(-40 + introProgress * 14, elapsed + 0.32)
+  const routeIntensity = hasArrived ? 0.28 : 1
+  const tunnelDrift = Math.sin(elapsed * 2.2) * (1 - introProgress) * 0.34
+  const targetX = pointer.x * (hasArrived ? 0.7 : 0.32) + cameraPath.x * 0.52 * routeIntensity + tunnelDrift
+  const targetY = pointer.y * (hasArrived ? 0.42 : 0.24) + cameraPath.y * 0.55 * routeIntensity
   const targetZ = 18 - introProgress * 9
   camera.position.x += (targetX - camera.position.x) * 0.045
   camera.position.y += (targetY - camera.position.y) * 0.045
   camera.position.z += (targetZ - camera.position.z) * 0.04
-  camera.lookAt(pointer.x * 0.42, pointer.y * 0.25, -36 + introProgress * 7)
+  camera.lookAt(
+    lookPath.x * 0.42 + pointer.x * 0.36,
+    lookPath.y * 0.42 + pointer.y * 0.22,
+    -36 + introProgress * 7,
+  )
+  camera.rotation.z += Math.sin(elapsed * 1.22) * 0.09 * routeIntensity
 
   renderer.render(scene, camera)
   requestAnimationFrame(animate)
