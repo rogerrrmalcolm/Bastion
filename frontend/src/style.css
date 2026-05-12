@@ -354,6 +354,254 @@ h1 {
   line-height: 1.45;
 }
 
+.workflow-result .result-emphasis {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.result-link {
+  width: fit-content;
+  color: #020617;
+  padding: 0.54rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: none;
+  background: #7dd3fc;
+  border-radius: 8px;
+}
+
+.workflow-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+  visibility: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(125, 211, 252, 0.14), transparent 30rem),
+    rgba(2, 3, 10, 0.72);
+  opacity: 0;
+  transition:
+    opacity 260ms ease,
+    visibility 260ms ease;
+}
+
+.experience-shell.is-processing .workflow-loader {
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.experience-shell.is-processing .workflow-dock {
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.loader-panel {
+  display: grid;
+  gap: clamp(0.8rem, 2vw, 1.1rem);
+  width: min(60rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 1.5rem);
+  padding: clamp(1rem, 2vw, 1.35rem);
+  overflow: auto;
+  color: #f8fafc;
+  background: rgba(3, 7, 18, 0.82);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 8px;
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(18px);
+}
+
+.loader-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.loader-header h2,
+.loader-header p {
+  margin: 0;
+}
+
+.loader-header h2 {
+  font-size: clamp(1.25rem, 2vw, 1.85rem);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.loader-header p:not(.eyebrow) {
+  color: #cbd5e1;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.workflow-map {
+  position: relative;
+  min-height: clamp(21rem, 46vh, 28rem);
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(125, 211, 252, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.08) 1px, transparent 1px),
+    rgba(2, 6, 23, 0.64);
+  background-size: 2rem 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+}
+
+.map-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.map-edge line {
+  stroke: rgba(148, 163, 184, 0.2);
+  stroke-width: 0.55;
+  transition:
+    stroke 220ms ease,
+    stroke-width 220ms ease,
+    filter 220ms ease;
+}
+
+.map-edge text {
+  fill: rgba(203, 213, 225, 0.58);
+  font-size: 2.5px;
+  font-weight: 800;
+}
+
+.map-edge.is-route line {
+  stroke: rgba(251, 191, 36, 0.72);
+  stroke-width: 0.8;
+}
+
+.map-edge.is-active line {
+  stroke: #7dd3fc;
+  stroke-width: 1.1;
+  filter: drop-shadow(0 0 0.45rem rgba(125, 211, 252, 0.78));
+  animation: edge-pulse 900ms ease-in-out infinite;
+}
+
+.map-node {
+  position: absolute;
+  display: grid;
+  gap: 0.16rem;
+  width: clamp(5.8rem, 10vw, 8rem);
+  min-height: 4.25rem;
+  padding: 0.62rem;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  transition:
+    color 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.map-node strong,
+.map-node span,
+.map-node small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-node strong {
+  color: #f8fafc;
+  font-size: clamp(0.72rem, 1vw, 0.88rem);
+  line-height: 1.1;
+}
+
+.map-node span {
+  color: #94a3b8;
+  font-size: 0.68rem;
+}
+
+.map-node small {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.map-node.is-reached {
+  color: #f8fafc;
+  border-color: rgba(251, 191, 36, 0.58);
+  background: rgba(30, 41, 59, 0.92);
+}
+
+.map-node.is-active {
+  border-color: #7dd3fc;
+  box-shadow:
+    0 0 0 3px rgba(125, 211, 252, 0.14),
+    0 18px 42px rgba(14, 165, 233, 0.28);
+  transform: translate(-50%, -50%) scale(1.04);
+}
+
+.map-node.is-complete {
+  border-color: #fbbf24;
+  background: rgba(120, 78, 8, 0.46);
+  box-shadow:
+    0 0 0 3px rgba(251, 191, 36, 0.13),
+    0 18px 42px rgba(251, 191, 36, 0.22);
+}
+
+.map-node.is-error {
+  border-color: #fb7185;
+  box-shadow:
+    0 0 0 3px rgba(251, 113, 133, 0.12),
+    0 18px 42px rgba(251, 113, 133, 0.24);
+}
+
+.loader-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.loader-status-grid div {
+  min-width: 0;
+  padding: 0.74rem;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+}
+
+.loader-status-grid span,
+.loader-status-grid strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loader-status-grid span {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.loader-status-grid strong {
+  margin-top: 0.25rem;
+  color: #f8fafc;
+  font-size: 0.92rem;
+}
+
+@keyframes edge-pulse {
+  50% {
+    stroke-width: 1.45;
+  }
+}
+
 @media (max-width: 860px) {
   .workflow-dock {
     width: min(38rem, calc(100vw - 1rem));
@@ -381,6 +629,20 @@ h1 {
   #workflow-status {
     text-align: left;
   }
+
+  .loader-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-map {
+    min-height: 28rem;
+  }
+
+  .map-node {
+    width: 5.7rem;
+    min-height: 4rem;
+    padding: 0.52rem;
+  }
 }
 
 @media (max-height: 700px) and (min-width: 861px) {
@@ -401,7 +663,9 @@ h1 {
 
 @media (prefers-reduced-motion: reduce) {
   .upload-target,
-  .workflow-actions button {
+  .workflow-actions button,
+  .map-edge.is-active line {
     transition: none;
+    animation: none;
   }
 }

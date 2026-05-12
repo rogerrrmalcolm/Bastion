@@ -1,1 +1,3 @@
-export function setupCounter(element) 
+export function setupCounter(element) {
+  return element;
+} 

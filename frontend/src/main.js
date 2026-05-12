@@ -40,6 +40,30 @@ app.innerHTML = `
       </form>
       <output id="workflow-result" class="workflow-result" aria-live="polite"></output>
     </section>
+    <section id="workflow-loader" class="workflow-loader" aria-live="polite" aria-hidden="true">
+      <div class="loader-panel">
+        <div class="loader-header">
+          <p class="eyebrow">Agent Routing</p>
+          <h2>Dijkstra workflow traversal</h2>
+          <p id="loader-caption">Calculating shortest path through Bastion agents.</p>
+        </div>
+        <div id="workflow-map" class="workflow-map" aria-hidden="true"></div>
+        <div class="loader-status-grid">
+          <div>
+            <span>Current destination</span>
+            <strong id="current-agent">Prompt intake</strong>
+          </div>
+          <div>
+            <span>Route cost</span>
+            <strong id="route-cost">0</strong>
+          </div>
+          <div>
+            <span>Response mode</span>
+            <strong id="response-mode">Analysis</strong>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 `
 
@@ -52,6 +76,12 @@ const fileSummary = document.querySelector('#file-summary')
 const promptInput = document.querySelector('#deal-prompt')
 const workflowStatus = document.querySelector('#workflow-status')
 const workflowResult = document.querySelector('#workflow-result')
+const workflowLoader = document.querySelector('#workflow-loader')
+const workflowMap = document.querySelector('#workflow-map')
+const loaderCaption = document.querySelector('#loader-caption')
+const currentAgent = document.querySelector('#current-agent')
+const routeCost = document.querySelector('#route-cost')
+const responseMode = document.querySelector('#response-mode')
 
 const scene = new THREE.Scene()
 scene.fog = new THREE.FogExp2(0x02030a, 0.018)
@@ -84,6 +114,45 @@ const palette = {
   white: new THREE.Color(0xf8fafc),
 }
 
+const agentGraph = {
+  nodes: [
+    { id: 'input', label: 'Prompt Intake', role: 'source package', x: 13, y: 54 },
+    { id: 'orchestrator', label: 'Orchestrator', role: 'route planner', x: 24, y: 26 },
+    { id: 'market', label: 'Market Agent', role: 'sector signals', x: 43, y: 16 },
+    { id: 'financial', label: 'Financial Agent', role: 'QoE and valuation', x: 58, y: 48 },
+    { id: 'risk', label: 'Risk Agent', role: 'risk matrix', x: 72, y: 25 },
+    { id: 'memo', label: 'Memo Agent', role: 'IC synthesis', x: 78, y: 58 },
+    { id: 'output', label: 'Answer', role: 'memo or PDF', x: 84, y: 82 },
+    { id: 'documents', label: 'Documents', role: 'PDF context', x: 36, y: 78 },
+    { id: 'market-data', label: 'Market Data', role: 'live signals', x: 64, y: 78 },
+  ],
+  edges: [
+    ['input', 'orchestrator', 2],
+    ['input', 'documents', 10],
+    ['orchestrator', 'market', 1],
+    ['orchestrator', 'financial', 7],
+    ['orchestrator', 'memo', 14],
+    ['market', 'financial', 2],
+    ['market', 'risk', 8],
+    ['financial', 'risk', 2],
+    ['financial', 'market-data', 6],
+    ['market-data', 'risk', 6],
+    ['documents', 'financial', 8],
+    ['documents', 'risk', 9],
+    ['risk', 'memo', 1],
+    ['memo', 'output', 1],
+  ],
+}
+
+const agentPathState = {
+  route: [],
+  distances: {},
+  visitOrder: [],
+  startedAt: 0,
+  frame: null,
+  isRunning: false,
+}
+
 function randomBetween(min, max) {
   return min + Math.random() * (max - min)
 }
@@ -91,6 +160,203 @@ function randomBetween(min, max) {
 function smoothstep(edge0, edge1, value) {
   const x = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)))
   return x * x * (3 - 2 * x)
+}
+
+function edgeId(from, to) {
+  return [from, to].sort().join('__')
+}
+
+function computeDijkstraRoute(graph, startId, endId) {
+  const nodeIds = graph.nodes.map((node) => node.id)
+  const distances = Object.fromEntries(nodeIds.map((id) => [id, Number.POSITIVE_INFINITY]))
+  const previous = {}
+  const visited = []
+  const unsettled = new Set(nodeIds)
+  const adjacency = Object.fromEntries(nodeIds.map((id) => [id, []]))
+
+  graph.edges.forEach(([from, to, weight]) => {
+    adjacency[from].push({ id: to, weight })
+    adjacency[to].push({ id: from, weight })
+  })
+
+  distances[startId] = 0
+
+  while (unsettled.size > 0) {
+    const current = [...unsettled].sort((a, b) => distances[a] - distances[b])[0]
+    if (!current || distances[current] === Number.POSITIVE_INFINITY) {
+      break
+    }
+
+    unsettled.delete(current)
+    visited.push(current)
+
+    if (current === endId) {
+      break
+    }
+
+    adjacency[current].forEach((neighbor) => {
+      if (!unsettled.has(neighbor.id)) {
+        return
+      }
+
+      const nextDistance = distances[current] + neighbor.weight
+      if (nextDistance < distances[neighbor.id]) {
+        distances[neighbor.id] = nextDistance
+        previous[neighbor.id] = current
+      }
+    })
+  }
+
+  const route = []
+  let cursor = endId
+  while (cursor) {
+    route.unshift(cursor)
+    cursor = previous[cursor]
+  }
+
+  return {
+    distances,
+    route: route[0] === startId ? route : [startId],
+    visitOrder: visited,
+  }
+}
+
+function renderWorkflowMap() {
+  const dijkstra = computeDijkstraRoute(agentGraph, 'input', 'output')
+  agentPathState.route = dijkstra.route
+  agentPathState.distances = dijkstra.distances
+  agentPathState.visitOrder = dijkstra.visitOrder
+
+  const lines = agentGraph.edges.map(([from, to, weight]) => {
+    const fromNode = agentGraph.nodes.find((node) => node.id === from)
+    const toNode = agentGraph.nodes.find((node) => node.id === to)
+    return `
+      <g class="map-edge" data-edge="${edgeId(from, to)}">
+        <line x1="${fromNode.x}" y1="${fromNode.y}" x2="${toNode.x}" y2="${toNode.y}" />
+        <text x="${(fromNode.x + toNode.x) / 2}" y="${(fromNode.y + toNode.y) / 2}">${weight}</text>
+      </g>
+    `
+  }).join('')
+
+  const nodes = agentGraph.nodes.map((node) => `
+    <div class="map-node" data-node="${node.id}" style="left: ${node.x}%; top: ${node.y}%;">
+      <strong>${node.label}</strong>
+      <span>${node.role}</span>
+      <small data-distance="${node.id}">cost inf</small>
+    </div>
+  `).join('')
+
+  workflowMap.innerHTML = `
+    <svg class="map-edges" viewBox="0 0 100 100" preserveAspectRatio="none">
+      ${lines}
+    </svg>
+    ${nodes}
+  `
+}
+
+function setLoaderStep(stepIndex, isComplete = false) {
+  const route = agentPathState.route
+  const boundedIndex = Math.min(stepIndex, route.length - 1)
+  const activeId = route[boundedIndex]
+  const activeNode = agentGraph.nodes.find((node) => node.id === activeId)
+  const reached = new Set(route.slice(0, boundedIndex + 1))
+
+  workflowMap.querySelectorAll('.map-node').forEach((nodeElement) => {
+    const nodeId = nodeElement.dataset.node
+    nodeElement.classList.toggle('is-reached', reached.has(nodeId))
+    nodeElement.classList.toggle('is-active', nodeId === activeId && !isComplete)
+    nodeElement.classList.toggle('is-complete', nodeId === 'output' && isComplete)
+  })
+
+  workflowMap.querySelectorAll('[data-distance]').forEach((distanceElement) => {
+    const nodeId = distanceElement.dataset.distance
+    const distance = agentPathState.distances[nodeId]
+    distanceElement.textContent = Number.isFinite(distance) && reached.has(nodeId)
+      ? `cost ${distance}`
+      : 'cost inf'
+  })
+
+  workflowMap.querySelectorAll('.map-edge').forEach((edgeElement) => {
+    const isRouteEdge = route.some((nodeId, index) => {
+      if (index === 0 || index > boundedIndex) {
+        return false
+      }
+      return edgeId(route[index - 1], nodeId) === edgeElement.dataset.edge
+    })
+    const isActiveEdge = boundedIndex > 0
+      && edgeId(route[boundedIndex - 1], route[boundedIndex]) === edgeElement.dataset.edge
+    edgeElement.classList.toggle('is-route', isRouteEdge)
+    edgeElement.classList.toggle('is-active', isActiveEdge && !isComplete)
+  })
+
+  currentAgent.textContent = activeNode?.label ?? 'Routing'
+  routeCost.textContent = Number.isFinite(agentPathState.distances[activeId])
+    ? String(agentPathState.distances[activeId])
+    : 'inf'
+}
+
+function startWorkflowLoader(mode) {
+  if (workflowMap.childElementCount === 0) {
+    renderWorkflowMap()
+  }
+
+  agentPathState.startedAt = performance.now()
+  agentPathState.isRunning = true
+  responseMode.textContent = mode
+  loaderCaption.textContent = 'Relaxing agent edges and routing diligence work.'
+  workflowLoader.setAttribute('aria-hidden', 'false')
+  shell.classList.add('is-processing')
+
+  const tick = (timestamp) => {
+    if (!agentPathState.isRunning) {
+      return
+    }
+
+    const elapsed = timestamp - agentPathState.startedAt
+    const stepDuration = 1450
+    const cycleLength = agentPathState.route.length
+    const routeIndex = Math.min(
+      Math.floor(elapsed / stepDuration) % cycleLength,
+      cycleLength - 1,
+    )
+
+    setLoaderStep(routeIndex)
+    agentPathState.frame = requestAnimationFrame(tick)
+  }
+
+  setLoaderStep(0)
+  agentPathState.frame = requestAnimationFrame(tick)
+}
+
+function stopWorkflowLoader() {
+  agentPathState.isRunning = false
+  if (agentPathState.frame) {
+    cancelAnimationFrame(agentPathState.frame)
+  }
+}
+
+function completeWorkflowLoader() {
+  stopWorkflowLoader()
+  loaderCaption.textContent = 'Shortest route complete. Rendering response.'
+  setLoaderStep(agentPathState.route.length - 1, true)
+
+  window.setTimeout(() => {
+    shell.classList.remove('is-processing')
+    workflowLoader.setAttribute('aria-hidden', 'true')
+  }, 780)
+}
+
+function failWorkflowLoader() {
+  stopWorkflowLoader()
+  loaderCaption.textContent = 'Workflow route interrupted. Check backend availability.'
+  workflowMap.querySelectorAll('.map-node.is-active').forEach((nodeElement) => {
+    nodeElement.classList.add('is-error')
+  })
+
+  window.setTimeout(() => {
+    shell.classList.remove('is-processing')
+    workflowLoader.setAttribute('aria-hidden', 'true')
+  }, 1300)
 }
 
 function starPosition(z = randomBetween(farLimit, nearLimit)) {
@@ -399,6 +665,71 @@ fileInput.addEventListener('change', () => {
   fileSummary.textContent = `${files.length} PDF${files.length === 1 ? '' : 's'} selected, ${sizeMb.toFixed(1)} MB`
 })
 
+function appendResultElement(tagName, text, className) {
+  const element = document.createElement(tagName)
+  element.textContent = text
+  if (className) {
+    element.className = className
+  }
+  workflowResult.appendChild(element)
+  return element
+}
+
+function resolveReportUrl(data) {
+  const candidates = [
+    data?.pdf_url,
+    data?.report_url,
+    data?.output_url,
+    data?.investment_memo?.pdf_url,
+    data?.report?.url,
+  ]
+
+  return candidates.find((candidate) => typeof candidate === 'string' && candidate.length > 0)
+}
+
+function renderWorkflowResponse(data) {
+  const memo = data?.investment_memo ?? {}
+  const reportUrl = resolveReportUrl(data)
+  workflowResult.textContent = ''
+
+  appendResultElement(
+    'strong',
+    memo.recommendation ?? (reportUrl ? 'Report ready' : 'Analysis complete'),
+  )
+  appendResultElement(
+    'span',
+    memo.executive_summary ?? data?.answer ?? 'The workflow returned a response.',
+  )
+
+  if (memo.headline) {
+    appendResultElement('span', memo.headline, 'result-emphasis')
+  }
+
+  if (Array.isArray(memo.investment_committee_conditions) && memo.investment_committee_conditions.length > 0) {
+    appendResultElement(
+      'span',
+      `Conditions: ${memo.investment_committee_conditions.slice(0, 3).join('; ')}`,
+    )
+  }
+
+  if (Array.isArray(memo.open_questions) && memo.open_questions.length > 0) {
+    appendResultElement('span', `Open questions: ${memo.open_questions.slice(0, 3).join('; ')}`)
+  }
+
+  if (reportUrl) {
+    const link = appendResultElement('a', 'Open generated PDF', 'result-link')
+    link.href = reportUrl
+    link.target = '_blank'
+    link.rel = 'noreferrer'
+  }
+}
+
+function renderWorkflowError() {
+  workflowResult.textContent = ''
+  appendResultElement('strong', 'Backend unavailable')
+  appendResultElement('span', 'Start the FastAPI backend on port 8000, then run the workflow again.')
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault()
 
@@ -408,9 +739,10 @@ form.addEventListener('submit', async (event) => {
     : ''
   const companyText = `${promptInput.value.trim()}${fileContext}`
 
-  workflowStatus.textContent = 'Running'
+  workflowStatus.textContent = 'Routing'
   workflowResult.textContent = ''
   form.classList.add('is-running')
+  startWorkflowLoader(files.length > 0 ? 'PDF + analysis' : 'Basic analysis')
 
   try {
     const response = await fetch('http://localhost:8000/analyze', {
@@ -427,14 +759,13 @@ form.addEventListener('submit', async (event) => {
     }
 
     const data = await response.json()
-    workflowStatus.textContent = 'Complete'
-    workflowResult.innerHTML = `
-      <strong>${data.investment_memo?.recommendation ?? 'Analysis complete'}</strong>
-      <span>${data.investment_memo?.executive_summary ?? 'The workflow returned a response.'}</span>
-    `
+    workflowStatus.textContent = resolveReportUrl(data) ? 'Report ready' : 'Complete'
+    renderWorkflowResponse(data)
+    completeWorkflowLoader()
   } catch (error) {
     workflowStatus.textContent = 'Backend unavailable'
-    workflowResult.textContent = 'Start the FastAPI backend on port 8000, then run the workflow again.'
+    renderWorkflowError()
+    failWorkflowLoader()
     console.error(error)
   } finally {
     form.classList.remove('is-running')
