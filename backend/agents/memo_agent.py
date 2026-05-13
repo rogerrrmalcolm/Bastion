@@ -55,16 +55,34 @@ Investment committee standard:
   continue diligence, submit an LOI, sign, reprice, restructure, or walk away
 - tie the recommendation to market attractiveness, financial quality, risk
   severity, purchase agreement protections, and missing information
+- compare the buyer/acquirer and target directly: strategic fit, market logic,
+  financing capacity, integration complexity, regulatory overlap, and risks
+  created by combining the companies
 - valuation_and_structure_view should discuss terms and protection mechanisms,
   not unsupported price targets
 - key_data_points should include only specialist-backed facts or conclusions;
   do not create new metrics in the memo
 - next_diligence_steps should be actionable workstreams, not generic follow-up
 
+Direct-answer requirement:
+- Identify every explicit question or requested analysis item in the user's
+  source company context.
+- Populate question_answers before open_questions. Each item must restate the
+  user's question and answer it directly using the specialist outputs.
+- If the available evidence is incomplete, still answer the portion that can be
+  answered, mark evidence_status as "partial" or "insufficient_evidence", and
+  name the exact missing evidence. Do not merely move the user's question into
+  open_questions without a direct answer.
+- Keep open_questions for remaining diligence questions the deal team must
+  resolve; avoid repeating the user's prompt as open questions unless the memo
+  also provides a question_answers entry explaining why it cannot be answered.
+
 Fill the memo-specific fields:
 - headline: one-line IC takeaway
+- buyer_target_fit_view: direct buyer-versus-target strategic fit and mismatch view
 - decision_framework: how committee should weigh market, financial, and risk evidence
 - valuation_and_structure_view: price/structure/escrow/earnout/financing implications
+- question_answers: direct answers to the user's explicit prompt questions
 - investment_committee_conditions: conditions before LOI, signing, or closing
 - source_limitations: missing information and unsupported assumptions
 

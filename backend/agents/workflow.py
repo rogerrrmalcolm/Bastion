@@ -54,6 +54,38 @@ SYNTHESIS_RUNNERS = {
 }
 
 
+def _format_analyze_request_context(request: AnalyzeRequest) -> str:
+    if any(
+        [
+            request.buyer_context,
+            request.target_context,
+            request.deal_context,
+            request.questions,
+        ]
+    ):
+        questions = "\n".join(
+            f"{index}. {question.strip()}"
+            for index, question in enumerate(request.questions, start=1)
+            if question.strip()
+        )
+        legacy_context = request.company_text.strip() if request.company_text else ""
+        return f"""
+Buyer / acquirer context:
+{request.buyer_context or "Not provided."}
+
+Target company:
+{request.target_context or "Not provided."}
+
+Deal thesis / transaction context:
+{request.deal_context or legacy_context or "Not provided."}
+
+Explicit user questions:
+{questions or "Use the buyer, target, and deal context to produce the core M&A comparison."}
+"""
+
+    return request.company_text or ""
+
+
 def _stringify_output(output: object) -> str:
     if hasattr(output, "model_dump_json"):
         return output.model_dump_json(indent=2)
@@ -110,15 +142,16 @@ def run_planned_specialist_agents(
 def run_investment_banking_workflow(request: AnalyzeRequest) -> AnalyzeResponse:
     session = memory_store.get_or_create(request.session_id)
     memory_context = memory_store.get_recent_context(session.session_id)
+    deal_context = _format_analyze_request_context(request)
     company_text_with_memory = f"""
 Conversation memory for this session:
 {memory_context}
 
-Current company context:
-{request.company_text}
+Current structured M&A deal context:
+{deal_context}
 """
 
-    memory_store.add_message(session.session_id, "user", request.company_text)
+    memory_store.add_message(session.session_id, "user", deal_context)
 
     try:
         orchestration_plan = run_orchestrator_agent(company_text_with_memory)

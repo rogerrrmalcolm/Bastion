@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 MetricCategory = Literal[
     "income_statement",
@@ -50,10 +50,45 @@ class AnalyzeRequest(BaseModel):
         default=None,
         description="Existing session id. If omitted, a new session is created.",
     )
-    company_text: str = Field(
-        min_length=20,
-        description="Company, market, financial, or deal context to analyze.",
+    company_text: str | None = Field(
+        default=None,
+        description=(
+            "Legacy single-field company, market, financial, or deal context. "
+            "Prefer buyer_context, target_context, deal_context, and questions."
+        ),
     )
+    buyer_context: str | None = Field(
+        default=None,
+        description="Acquirer/buyer strategy, operating profile, financing capacity, and rationale.",
+    )
+    target_context: str | None = Field(
+        default=None,
+        description="Target company profile, financials, market position, risks, and diligence data.",
+    )
+    deal_context: str | None = Field(
+        default=None,
+        description="Transaction thesis, structure, valuation assumptions, and deal-specific context.",
+    )
+    questions: list[str] = Field(
+        default_factory=list,
+        description="Explicit user questions the final memo must answer directly.",
+    )
+
+    @model_validator(mode="after")
+    def require_analyzable_context(self) -> "AnalyzeRequest":
+        context_parts = [
+            self.company_text,
+            self.buyer_context,
+            self.target_context,
+            self.deal_context,
+            "\n".join(self.questions),
+        ]
+        context_length = len("\n".join(part.strip() for part in context_parts if part))
+        if context_length < 20:
+            raise ValueError(
+                "Provide at least 20 characters of company or deal context to analyze."
+            )
+        return self
 
 
 class ToolAssignment(BaseModel):
@@ -634,6 +669,26 @@ class MemoDataPoint(BaseModel):
     citation: FinancialCitation | None = None
 
 
+class MemoQuestionAnswer(BaseModel):
+    question: str = Field(description="Explicit user question or requested analysis item.")
+    answer: str = Field(
+        description=(
+            "Direct answer to the user question using available agent outputs. "
+            "If evidence is incomplete, answer what can be answered and state the exact gap."
+        )
+    )
+    evidence_status: Literal["answered", "partial", "insufficient_evidence"] = Field(
+        description="Whether the available evidence fully answers the question."
+    )
+    confidence: Literal["low", "medium", "high"] = Field(
+        description="Confidence in this specific answer."
+    )
+    source_agents: list[AgentName] = Field(
+        default_factory=list,
+        description="Agents whose outputs support the answer.",
+    )
+
+
 class InvestmentMemo(BaseModel):
     headline: str = Field(
         default="",
@@ -643,6 +698,13 @@ class InvestmentMemo(BaseModel):
         description="Short narrative summary suitable for a third-party reader."
     )
     investment_thesis: str = Field(description="Narrative investment thesis.")
+    buyer_target_fit_view: str = Field(
+        default="",
+        description=(
+            "Direct comparison of buyer/acquirer fit with the target, including "
+            "strategic rationale, synergy logic, integration fit, and key mismatch risks."
+        ),
+    )
     recommendation: Literal["proceed", "proceed_with_caution", "pause", "decline"]
     recommendation_rationale: str = Field(description="Plain-English rationale.")
     decision_framework: str = Field(
@@ -655,6 +717,13 @@ class InvestmentMemo(BaseModel):
     valuation_and_structure_view: str = Field(
         default="",
         description="View on valuation, structure, earnout, escrow, rollover, or financing terms.",
+    )
+    question_answers: list[MemoQuestionAnswer] = Field(
+        default_factory=list,
+        description=(
+            "Direct answers to explicit user questions from the original prompt, "
+            "kept separate from the deal team's open diligence questions."
+        ),
     )
     key_data_points: list[MemoDataPoint] = Field(default_factory=list)
     key_risks: list[str] = Field(default_factory=list)

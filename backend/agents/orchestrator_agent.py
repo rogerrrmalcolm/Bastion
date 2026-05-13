@@ -237,13 +237,16 @@ Every step should specify the upstream context it depends on and assign only
 tools that materially improve the answer.
 
 Planning standard:
-- identify the target, buyer, sector, geography, transaction type, and missing inputs when available
+- identify the buyer/acquirer, target, sector, geography, transaction type, and missing inputs when available
+- route the workflow as a buyer-target comparison, not as a single-company review
+- require agents to compare strategic fit, target attractiveness, buyer capacity,
+  integration implications, and risks created by combining the companies
 - force agents to distinguish source-backed facts, live-tool evidence, analyst inference, user assumptions, and unknowns
 - require deal-specific output tied to valuation, buyer appetite, financing, diligence scope, closing certainty, or purchase agreement terms
 - do not allow unsupported market facts, metrics, valuation multiples, risks, dates, or citations to pass through as facts
 - surface missing information as diligence requests instead of asking agents to guess
 
-Company context:
+Structured buyer-target M&A context:
 {company_text}
 """,
         OrchestrationPlan,

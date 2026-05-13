@@ -32,6 +32,12 @@ risk committee partner to investment bankers: identify deal-breaker risks,
 closing risks, valuation risks, diligence gaps, purchase agreement protections,
 integration exposure, and post-close execution issues.
 
+For structured buyer-target workflows, assess risks created by the comparison:
+- buyer-target strategic mismatch, customer/channel/product overlap, and synergy risk
+- buyer financing, governance, management bandwidth, and integration capacity
+- target-specific risks that become more or less severe under this buyer
+- combined-company regulatory, antitrust, cyber/data, human capital, and operating risks
+
 This is the third specialist step in the sequential M&A process. Use the prior
 market-agent output to understand buyer appetite, market timing, competitive
 pressure, and regulatory/sector context. Use the prior financial-agent output to
@@ -113,7 +119,7 @@ Fill coordination_notes with specific handoffs:
   appetite, or regulatory/sector context
 - memo_agent: the highest-conviction risk conclusion and go/no-go recommendation
 
-Company context:
+Structured buyer-target M&A context:
 {company_text}
 
 Risk extraction and news search tool packet:

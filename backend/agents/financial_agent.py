@@ -46,6 +46,14 @@ preparing a buyer-facing financial diligence summary: separate reported facts
 from calculated metrics, isolate source limitations, and translate financial
 findings into valuation, structure, financing, and diligence implications.
 
+For structured buyer-target workflows, analyze the deal as a comparison:
+- target standalone financial quality and valuation support
+- buyer financing capacity, balance-sheet flexibility, and ability to fund the deal
+- accretion/dilution, leverage, purchase price adjustment, earnout, escrow, and
+  synergy economics only when inputs are explicitly provided
+- financial gaps that prevent buyer-target comparison, including missing buyer
+  capacity data or target financial statements
+
 This is the second specialist step in the sequential M&A process. Use prior
 market-agent output in the company context to pressure-test growth, pricing,
 margin durability, valuation sentiment, buyer appetite, and financing risk.
@@ -121,7 +129,7 @@ short, decision-focused language. Every metric or finding that relies on a
 source should include a citation. If no document name is available, cite
 "provided company context".
 
-Company context:
+Structured buyer-target M&A context:
 {company_text}
 
 Financial extraction and calculation tool packet:

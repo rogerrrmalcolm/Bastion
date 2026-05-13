@@ -7,7 +7,7 @@ app.innerHTML = `
   <main class="experience-shell is-traveling">
     <div id="scene-root" class="scene-root" aria-hidden="true"></div>
     <div class="flight-readout" aria-hidden="true">
-      <span>M&A Signal Transit</span>
+      <span>Buyer Target Transit</span>
       <div class="readout-track"><i id="readout-progress"></i></div>
     </div>
     <section class="workflow-dock" aria-label="Bastion workflow input">
@@ -24,17 +24,35 @@ app.innerHTML = `
           </span>
         </label>
         <input id="pdf-upload" type="file" accept="application/pdf" multiple />
-        <label class="prompt-field">
-          <span>Deal prompt</span>
-          <textarea
-            id="deal-prompt"
-            minlength="20"
-            placeholder="Paste company context, acquisition thesis, or diligence questions."
-            required
-          ></textarea>
-        </label>
+        <div class="deal-fields">
+          <label class="prompt-field company-field">
+            <span>Buyer / acquirer</span>
+            <textarea
+              id="buyer-context"
+              minlength="10"
+              placeholder="Paste buyer strategy, business profile, financing capacity, rationale, and constraints."
+              required
+            ></textarea>
+          </label>
+          <label class="prompt-field company-field">
+            <span>Target company</span>
+            <textarea
+              id="target-context"
+              minlength="10"
+              placeholder="Paste target financials, product, market position, risks, customer details, or ticker."
+              required
+            ></textarea>
+          </label>
+          <label class="prompt-field deal-question-field">
+            <span>Deal thesis / questions</span>
+            <textarea
+              id="deal-prompt"
+              placeholder="Ask what to compare, such as strategic fit, valuation support, risk, synergies, or whether to proceed."
+            ></textarea>
+          </label>
+        </div>
         <div class="workflow-actions">
-          <button type="submit">Run workflow</button>
+          <button type="submit">Compare deal</button>
           <p id="workflow-status" role="status">Ready</p>
         </div>
       </form>
@@ -51,7 +69,7 @@ app.innerHTML = `
         <div class="loader-status-grid">
           <div>
             <span>Current destination</span>
-            <strong id="current-agent">Prompt intake</strong>
+            <strong id="current-agent">Buyer intake</strong>
           </div>
           <div>
             <span>Route cost</span>
@@ -73,6 +91,8 @@ const readoutProgress = document.querySelector('#readout-progress')
 const form = document.querySelector('#workflow-form')
 const fileInput = document.querySelector('#pdf-upload')
 const fileSummary = document.querySelector('#file-summary')
+const buyerInput = document.querySelector('#buyer-context')
+const targetInput = document.querySelector('#target-context')
 const promptInput = document.querySelector('#deal-prompt')
 const workflowStatus = document.querySelector('#workflow-status')
 const workflowResult = document.querySelector('#workflow-result')
@@ -104,7 +124,9 @@ const tunnelLength = 170
 const nearLimit = 12
 const farLimit = -tunnelLength
 const introDuration = 2.85
+const WORKFLOW_TIMEOUT_MS = 420000
 let hasArrived = false
+let dealFocus = 'neutral'
 
 const palette = {
   espresso: new THREE.Color(0x2b1a12),
@@ -117,19 +139,22 @@ const palette = {
 
 const agentGraph = {
   nodes: [
-    { id: 'input', label: 'Prompt Intake', role: 'source package', x: 13, y: 54 },
-    { id: 'orchestrator', label: 'Orchestrator', role: 'route planner', x: 24, y: 26 },
-    { id: 'market', label: 'Market Agent', role: 'sector signals', x: 43, y: 16 },
-    { id: 'financial', label: 'Financial Agent', role: 'QoE and valuation', x: 58, y: 48 },
-    { id: 'risk', label: 'Risk Agent', role: 'risk matrix', x: 72, y: 25 },
-    { id: 'memo', label: 'Memo Agent', role: 'IC synthesis', x: 78, y: 58 },
-    { id: 'output', label: 'Answer', role: 'memo or PDF', x: 84, y: 82 },
-    { id: 'documents', label: 'Documents', role: 'PDF context', x: 36, y: 78 },
-    { id: 'market-data', label: 'Market Data', role: 'live signals', x: 64, y: 78 },
+    { id: 'buyer', label: 'Buyer', role: 'acquirer profile', x: 10, y: 44 },
+    { id: 'target', label: 'Target', role: 'company profile', x: 25, y: 62 },
+    { id: 'orchestrator', label: 'Orchestrator', role: 'route planner', x: 32, y: 28 },
+    { id: 'market', label: 'Market Agent', role: 'sector signals', x: 48, y: 16 },
+    { id: 'financial', label: 'Financial Agent', role: 'QoE and valuation', x: 61, y: 47 },
+    { id: 'risk', label: 'Risk Agent', role: 'risk matrix', x: 74, y: 25 },
+    { id: 'memo', label: 'Memo Agent', role: 'IC synthesis', x: 80, y: 58 },
+    { id: 'output', label: 'Answer', role: 'buyer-target memo', x: 86, y: 82 },
+    { id: 'documents', label: 'Documents', role: 'PDF context', x: 39, y: 82 },
+    { id: 'market-data', label: 'Market Data', role: 'live signals', x: 66, y: 79 },
   ],
   edges: [
-    ['input', 'orchestrator', 2],
-    ['input', 'documents', 10],
+    ['buyer', 'target', 1],
+    ['buyer', 'orchestrator', 6],
+    ['target', 'orchestrator', 1],
+    ['target', 'documents', 6],
     ['orchestrator', 'market', 1],
     ['orchestrator', 'financial', 7],
     ['orchestrator', 'memo', 14],
@@ -152,6 +177,7 @@ const agentPathState = {
   startedAt: 0,
   frame: null,
   isRunning: false,
+  isAwaitingResponse: false,
 }
 
 function randomBetween(min, max) {
@@ -231,7 +257,7 @@ function computeDijkstraRoute(graph, startId, endId) {
 }
 
 function renderWorkflowMap() {
-  const dijkstra = computeDijkstraRoute(agentGraph, 'input', 'output')
+  const dijkstra = computeDijkstraRoute(agentGraph, 'buyer', 'output')
   agentPathState.route = dijkstra.route
   agentPathState.distances = dijkstra.distances
   agentPathState.visitOrder = dijkstra.visitOrder
@@ -311,10 +337,12 @@ function startWorkflowLoader(mode) {
 
   agentPathState.startedAt = performance.now()
   agentPathState.isRunning = true
+  agentPathState.isAwaitingResponse = false
   responseMode.textContent = mode
-  loaderCaption.textContent = 'Relaxing agent edges and routing diligence work.'
+  loaderCaption.textContent = 'Comparing buyer and target through the shortest diligence route.'
   workflowLoader.setAttribute('aria-hidden', 'false')
   shell.classList.add('is-processing')
+  shell.classList.add('is-comparing')
 
   const tick = (timestamp) => {
     if (!agentPathState.isRunning) {
@@ -322,14 +350,21 @@ function startWorkflowLoader(mode) {
     }
 
     const elapsed = timestamp - agentPathState.startedAt
-    const stepDuration = 1450
-    const cycleLength = agentPathState.route.length
+    const stepDuration = 2600
+    const finalIndex = agentPathState.route.length - 1
+    const lastWorkingIndex = Math.max(0, finalIndex - 1)
     const routeIndex = Math.min(
-      Math.floor(elapsed / stepDuration) % cycleLength,
-      cycleLength - 1,
+      Math.floor(elapsed / stepDuration),
+      lastWorkingIndex,
     )
 
     setLoaderStep(routeIndex)
+    if (routeIndex === lastWorkingIndex && !agentPathState.isAwaitingResponse) {
+      agentPathState.isAwaitingResponse = true
+      workflowStatus.textContent = 'Finalizing'
+      loaderCaption.textContent = 'Comparison route complete. Waiting for Bastion to produce the answer.'
+    }
+
     agentPathState.frame = requestAnimationFrame(tick)
   }
 
@@ -339,6 +374,8 @@ function startWorkflowLoader(mode) {
 
 function stopWorkflowLoader() {
   agentPathState.isRunning = false
+  agentPathState.isAwaitingResponse = false
+  shell.classList.remove('is-comparing')
   if (agentPathState.frame) {
     cancelAnimationFrame(agentPathState.frame)
   }
@@ -355,9 +392,9 @@ function completeWorkflowLoader() {
   }, 780)
 }
 
-function failWorkflowLoader() {
+function failWorkflowLoader(message = 'Workflow route interrupted. Check backend availability.') {
   stopWorkflowLoader()
-  loaderCaption.textContent = 'Workflow route interrupted. Check backend availability.'
+  loaderCaption.textContent = message
   workflowMap.querySelectorAll('.map-node.is-active').forEach((nodeElement) => {
     nodeElement.classList.add('is-error')
   })
@@ -554,11 +591,92 @@ function makeArrivalGate() {
   return group
 }
 
+function makeBeaconLabelTexture(label) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 160
+  const context = canvas.getContext('2d')
+
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  context.fillStyle = 'rgba(255, 255, 255, 0.9)'
+  context.strokeStyle = 'rgba(91, 58, 41, 0.75)'
+  context.lineWidth = 4
+  context.beginPath()
+  context.roundRect(28, 34, 456, 92, 24)
+  context.fill()
+  context.stroke()
+  context.font = '800 52px Arial'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillStyle = '#2b1a12'
+  context.fillText(label, 256, 82)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+function makeDealBeacon(label, x, color) {
+  const group = new THREE.Group()
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+  })
+  const coreMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.46,
+    depthWrite: false,
+  })
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.035, 14, 96), ringMaterial)
+  const inner = new THREE.Mesh(new THREE.CircleGeometry(0.54, 64), coreMaterial)
+  const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeBeaconLabelTexture(label),
+    transparent: true,
+    opacity: 0.84,
+    depthWrite: false,
+  }))
+
+  labelSprite.position.set(0, -1.08, 0.05)
+  labelSprite.scale.set(1.95, 0.62, 1)
+  group.position.set(x, 0, 0)
+  group.add(inner, ring, labelSprite)
+  group.userData = { ring, inner, label: labelSprite }
+  return group
+}
+
+function makeDealComparisonBeacons() {
+  const group = new THREE.Group()
+  const buyer = makeDealBeacon('BUYER', -2.8, 0x5b3a29)
+  const target = makeDealBeacon('TARGET', 2.8, 0x9b6a35)
+  const bridgeGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-1.92, 0, -0.03),
+    new THREE.Vector3(1.92, 0, -0.03),
+  ])
+  const bridge = new THREE.Line(
+    bridgeGeometry,
+    new THREE.LineBasicMaterial({
+      color: 0xd7c4aa,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+    }),
+  )
+
+  group.add(bridge, buyer, target)
+  group.position.set(0, 0.6, -24)
+  group.userData = { buyer, target, bridge }
+  return group
+}
+
 const stars = makeStarField()
 const rings = makeTunnelRings()
 const arrivalGate = makeArrivalGate()
 const financeSymbols = makeFinanceSymbols()
-scene.add(stars, rings, arrivalGate, financeSymbols)
+const dealBeacons = makeDealComparisonBeacons()
+scene.add(stars, rings, arrivalGate, financeSymbols, dealBeacons)
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.56)
 scene.add(ambient)
@@ -570,6 +688,12 @@ function markArrived() {
   hasArrived = true
   shell.classList.remove('is-traveling')
   shell.classList.add('is-arrived')
+}
+
+function setDealFocus(focus) {
+  dealFocus = focus
+  shell.classList.toggle('is-buyer-focus', focus === 'buyer')
+  shell.classList.toggle('is-target-focus', focus === 'target')
 }
 
 function resizeRenderer() {
@@ -658,6 +782,33 @@ function animate() {
   arrivalGate.position.y = gatePath.y * 0.58
   arrivalGate.scale.setScalar(0.72 + introProgress * 0.46 + Math.sin(elapsed * 1.3) * 0.035)
 
+  const compareBias = agentPathState.isRunning
+    ? Math.sin(elapsed * 1.15)
+    : dealFocus === 'buyer'
+      ? -1
+      : dealFocus === 'target'
+        ? 1
+        : 0
+  const beaconOpacity = hasArrived ? (agentPathState.isRunning ? 0.95 : 0.48) : introProgress * 0.2
+  const buyerEmphasis = compareBias < -0.16 ? 1 : 0.62
+  const targetEmphasis = compareBias > 0.16 ? 1 : 0.62
+  const beaconPath = tunnelPathOffset(-24, elapsed)
+  dealBeacons.position.x = beaconPath.x * 0.22
+  dealBeacons.position.y = 0.72 + beaconPath.y * 0.15 + Math.sin(elapsed * 0.9) * 0.08
+  dealBeacons.position.z = -23 + Math.sin(elapsed * 0.52) * 0.6
+  dealBeacons.rotation.z = Math.sin(elapsed * 0.28) * 0.08
+  dealBeacons.userData.bridge.material.opacity = beaconOpacity * (0.45 + Math.abs(compareBias) * 0.36)
+  ;[
+    [dealBeacons.userData.buyer, buyerEmphasis],
+    [dealBeacons.userData.target, targetEmphasis],
+  ].forEach(([beacon, emphasis]) => {
+    beacon.scale.setScalar(0.9 + emphasis * 0.18 + Math.sin(elapsed * 2.1) * 0.025)
+    beacon.userData.ring.rotation.z += delta * (0.58 + emphasis * 0.32)
+    beacon.userData.ring.material.opacity = beaconOpacity * emphasis
+    beacon.userData.inner.material.opacity = beaconOpacity * 0.45 * emphasis
+    beacon.userData.label.material.opacity = beaconOpacity * (0.66 + emphasis * 0.22)
+  })
+
   if (readoutProgress) {
     readoutProgress.style.transform = `scaleX(${Math.min(1, elapsed / introDuration)})`
   }
@@ -670,8 +821,13 @@ function animate() {
   const lookPath = tunnelPathOffset(-40 + introProgress * 14, elapsed + 0.32)
   const routeIntensity = hasArrived ? 0.28 : 1
   const tunnelDrift = Math.sin(elapsed * 2.2) * (1 - introProgress) * 0.34
-  const targetX = pointer.x * (hasArrived ? 0.7 : 0.32) + cameraPath.x * 0.52 * routeIntensity + tunnelDrift
-  const targetY = pointer.y * (hasArrived ? 0.42 : 0.24) + cameraPath.y * 0.55 * routeIntensity
+  const targetX = pointer.x * (hasArrived ? 0.7 : 0.32)
+    + cameraPath.x * 0.52 * routeIntensity
+    + tunnelDrift
+    + compareBias * (agentPathState.isRunning ? 0.95 : 0.52)
+  const targetY = pointer.y * (hasArrived ? 0.42 : 0.24)
+    + cameraPath.y * 0.55 * routeIntensity
+    + (agentPathState.isRunning ? Math.sin(elapsed * 0.82) * 0.58 : Math.abs(compareBias) * 0.12)
   const targetZ = 18 - introProgress * 9
   camera.position.x += (targetX - camera.position.x) * 0.045
   camera.position.y += (targetY - camera.position.y) * 0.045
@@ -693,6 +849,10 @@ window.addEventListener('pointermove', (event) => {
   pointer.y = -(event.clientY / window.innerHeight - 0.5) * 2
 })
 
+buyerInput.addEventListener('focus', () => setDealFocus('buyer'))
+targetInput.addEventListener('focus', () => setDealFocus('target'))
+promptInput.addEventListener('focus', () => setDealFocus('neutral'))
+
 fileInput.addEventListener('change', () => {
   const files = Array.from(fileInput.files ?? [])
   if (files.length === 0) {
@@ -712,6 +872,42 @@ function appendResultElement(tagName, text, className) {
   }
   workflowResult.appendChild(element)
   return element
+}
+
+function appendQuestionAnswers(answers) {
+  if (!Array.isArray(answers) || answers.length === 0) {
+    return
+  }
+
+  appendResultElement('strong', 'Answers to your questions')
+  answers.slice(0, 8).forEach((item) => {
+    const answerCard = document.createElement('article')
+    answerCard.className = 'result-answer'
+
+    const question = document.createElement('b')
+    question.textContent = item.question ?? 'Question'
+    answerCard.appendChild(question)
+
+    const answer = document.createElement('span')
+    answer.textContent = item.answer ?? 'No answer returned.'
+    answerCard.appendChild(answer)
+
+    const meta = [
+      item.evidence_status,
+      item.confidence ? `${item.confidence} confidence` : '',
+      Array.isArray(item.source_agents) && item.source_agents.length
+        ? item.source_agents.join(', ')
+        : '',
+    ].filter(Boolean)
+
+    if (meta.length > 0) {
+      const detail = document.createElement('small')
+      detail.textContent = meta.join(' | ')
+      answerCard.appendChild(detail)
+    }
+
+    workflowResult.appendChild(answerCard)
+  })
 }
 
 function resolveReportUrl(data) {
@@ -744,6 +940,12 @@ function renderWorkflowResponse(data) {
     appendResultElement('span', memo.headline, 'result-emphasis')
   }
 
+  if (memo.buyer_target_fit_view) {
+    appendResultElement('span', `Buyer-target fit: ${memo.buyer_target_fit_view}`)
+  }
+
+  appendQuestionAnswers(memo.question_answers)
+
   if (Array.isArray(memo.investment_committee_conditions) && memo.investment_committee_conditions.length > 0) {
     appendResultElement(
       'span',
@@ -763,10 +965,20 @@ function renderWorkflowResponse(data) {
   }
 }
 
-function renderWorkflowError() {
+function renderWorkflowError(
+  title = 'Backend unavailable',
+  message = 'Start the FastAPI backend on port 8000, then run the workflow again.',
+) {
   workflowResult.textContent = ''
-  appendResultElement('strong', 'Backend unavailable')
-  appendResultElement('span', 'Start the FastAPI backend on port 8000, then run the workflow again.')
+  appendResultElement('strong', title)
+  appendResultElement('span', message)
+}
+
+function parseDealQuestions(text) {
+  return text
+    .split(/\n+/)
+    .map((question) => question.replace(/^\s*[-*\d.)]+\s*/, '').trim())
+    .filter(Boolean)
 }
 
 form.addEventListener('submit', async (event) => {
@@ -776,20 +988,32 @@ form.addEventListener('submit', async (event) => {
   const fileContext = files.length
     ? `\n\nAttached PDF filenames for reference:\n${files.map((file) => `- ${file.name}`).join('\n')}`
     : ''
-  const companyText = `${promptInput.value.trim()}${fileContext}`
+  const buyerContext = buyerInput.value.trim()
+  const targetContext = targetInput.value.trim()
+  const dealContext = `${promptInput.value.trim()}${fileContext}`.trim()
+  const questions = parseDealQuestions(promptInput.value.trim())
 
   workflowStatus.textContent = 'Routing'
   workflowResult.textContent = ''
   form.classList.add('is-running')
-  startWorkflowLoader(files.length > 0 ? 'PDF + analysis' : 'Basic analysis')
+  setDealFocus('neutral')
+  startWorkflowLoader(files.length > 0 ? 'PDF + comparison' : 'Buyer-target comparison')
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => {
+    controller.abort()
+  }, WORKFLOW_TIMEOUT_MS)
 
   try {
-    const response = await fetch('http://localhost:8000/analyze', {
+    const response = await fetch('http://127.0.0.1:8000/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         session_id: window.crypto?.randomUUID?.() ?? `session-${Date.now()}`,
-        company_text: companyText,
+        buyer_context: buyerContext,
+        target_context: targetContext,
+        deal_context: dealContext || 'Compare the buyer and target for a potential M&A transaction.',
+        questions,
       }),
     })
 
@@ -802,11 +1026,22 @@ form.addEventListener('submit', async (event) => {
     renderWorkflowResponse(data)
     completeWorkflowLoader()
   } catch (error) {
-    workflowStatus.textContent = 'Backend unavailable'
-    renderWorkflowError()
-    failWorkflowLoader()
+    const didTimeout = error?.name === 'AbortError'
+    workflowStatus.textContent = didTimeout ? 'Timed out' : 'Backend unavailable'
+    renderWorkflowError(
+      didTimeout ? 'Workflow timed out' : 'Backend unavailable',
+      didTimeout
+        ? 'The agent route completed, but the backend did not return before the timeout. Try a shorter prompt or run the backend logs to inspect the Gemini call.'
+        : 'Start the FastAPI backend on port 8000, then run the workflow again.',
+    )
+    failWorkflowLoader(
+      didTimeout
+        ? 'Workflow timed out while waiting for the backend response.'
+        : 'Workflow route interrupted. Check backend availability.',
+    )
     console.error(error)
   } finally {
+    window.clearTimeout(timeoutId)
     form.classList.remove('is-running')
   }
 })
