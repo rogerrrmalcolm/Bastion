@@ -12,8 +12,18 @@ app.innerHTML = `
     </div>
     <section class="workflow-dock" aria-label="Bastion workflow input">
       <div class="dock-header">
-        <p class="eyebrow">Bastion M&A Workflow</p>
-        <h1>Diligence terminal</h1>
+        <div class="dock-heading">
+          <p class="eyebrow">Bastion M&A Workflow</p>
+          <h1>Diligence terminal</h1>
+        </div>
+        <div class="view-switch" role="tablist" aria-label="Workflow views">
+          <button id="analysis-view-button" class="view-tab is-active" type="button" role="tab" aria-selected="true">
+            Analyze
+          </button>
+          <button id="dashboard-view-button" class="view-tab" type="button" role="tab" aria-selected="false">
+            Dashboard
+          </button>
+        </div>
       </div>
       <form id="workflow-form" class="workflow-form">
         <div class="deal-fields">
@@ -69,6 +79,34 @@ app.innerHTML = `
         </div>
       </form>
       <output id="workflow-result" class="workflow-result" aria-live="polite"></output>
+      <section id="dashboard-panel" class="dashboard-panel" aria-label="Deal dashboard" hidden>
+        <div class="dashboard-hero">
+          <div>
+            <span>Pipeline</span>
+            <strong id="dashboard-count">0 analyses</strong>
+          </div>
+          <button id="clear-dashboard-button" class="subtle-button" type="button">Clear</button>
+        </div>
+        <div class="dashboard-metrics">
+          <article>
+            <span>Total</span>
+            <strong id="dashboard-total">0</strong>
+          </article>
+          <article>
+            <span>Proceed</span>
+            <strong id="dashboard-proceed">0</strong>
+          </article>
+          <article>
+            <span>High Risk</span>
+            <strong id="dashboard-risk">0</strong>
+          </article>
+          <article>
+            <span>Questions</span>
+            <strong id="dashboard-questions">0</strong>
+          </article>
+        </div>
+        <div id="dashboard-list" class="dashboard-list"></div>
+      </section>
     </section>
     <section id="workflow-loader" class="workflow-loader" aria-live="polite" aria-hidden="true">
       <div class="loader-panel">
@@ -101,6 +139,8 @@ const sceneRoot = document.querySelector('#scene-root')
 const shell = document.querySelector('.experience-shell')
 const readoutProgress = document.querySelector('#readout-progress')
 const workflowDock = document.querySelector('.workflow-dock')
+const analysisViewButton = document.querySelector('#analysis-view-button')
+const dashboardViewButton = document.querySelector('#dashboard-view-button')
 const form = document.querySelector('#workflow-form')
 const buyerFileInput = document.querySelector('#buyer-pdf-upload')
 const buyerFileSummary = document.querySelector('#buyer-file-summary')
@@ -111,6 +151,14 @@ const targetInput = document.querySelector('#target-context')
 const promptInput = document.querySelector('#deal-prompt')
 const workflowStatus = document.querySelector('#workflow-status')
 const workflowResult = document.querySelector('#workflow-result')
+const dashboardPanel = document.querySelector('#dashboard-panel')
+const dashboardCount = document.querySelector('#dashboard-count')
+const dashboardTotal = document.querySelector('#dashboard-total')
+const dashboardProceed = document.querySelector('#dashboard-proceed')
+const dashboardRisk = document.querySelector('#dashboard-risk')
+const dashboardQuestions = document.querySelector('#dashboard-questions')
+const dashboardList = document.querySelector('#dashboard-list')
+const clearDashboardButton = document.querySelector('#clear-dashboard-button')
 const workflowLoader = document.querySelector('#workflow-loader')
 const workflowMap = document.querySelector('#workflow-map')
 const loaderCaption = document.querySelector('#loader-caption')
@@ -140,6 +188,24 @@ const nearLimit = 12
 const farLimit = -tunnelLength
 const introDuration = 2.85
 const WORKFLOW_TIMEOUT_MS = 420000
+const DASHBOARD_STORAGE_KEY = 'bastion-dashboard-analyses'
+const confidenceScores = {
+  low: 34,
+  medium: 67,
+  high: 100,
+}
+const severityScores = {
+  low: 34,
+  medium: 67,
+  high: 100,
+  critical: 100,
+}
+const recommendationScores = {
+  proceed: 92,
+  proceed_with_caution: 68,
+  pause: 42,
+  decline: 18,
+}
 let hasArrived = false
 let dealFocus = 'neutral'
 
@@ -887,6 +953,289 @@ targetFileInput.addEventListener('change', () => {
   targetFileSummary.textContent = formatFileSummary(files, 'No target PDFs selected')
 })
 
+analysisViewButton.addEventListener('click', () => switchWorkflowView('analysis'))
+dashboardViewButton.addEventListener('click', () => switchWorkflowView('dashboard'))
+clearDashboardButton.addEventListener('click', () => {
+  window.localStorage.removeItem(DASHBOARD_STORAGE_KEY)
+  renderDashboard()
+})
+
+function switchWorkflowView(view) {
+  const isDashboard = view === 'dashboard'
+  workflowDock.classList.toggle('is-dashboard', isDashboard)
+  form.hidden = isDashboard
+  workflowResult.hidden = isDashboard
+  dashboardPanel.hidden = !isDashboard
+  analysisViewButton.classList.toggle('is-active', !isDashboard)
+  dashboardViewButton.classList.toggle('is-active', isDashboard)
+  analysisViewButton.setAttribute('aria-selected', String(!isDashboard))
+  dashboardViewButton.setAttribute('aria-selected', String(isDashboard))
+
+  if (isDashboard) {
+    renderDashboard()
+  }
+}
+
+function toTitleCase(value) {
+  return String(value ?? '')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
+}
+
+function scoreForConfidence(value) {
+  return confidenceScores[String(value ?? '').toLowerCase()] ?? 0
+}
+
+function scoreForSeverity(value) {
+  return severityScores[String(value ?? '').toLowerCase()] ?? 0
+}
+
+function scoreForRecommendation(value) {
+  return recommendationScores[String(value ?? '').toLowerCase()] ?? 50
+}
+
+function getRiskItems(data) {
+  const risk = data?.risk_analysis ?? {}
+  return [
+    ...(Array.isArray(risk.top_risks) ? risk.top_risks : []),
+    ...(Array.isArray(risk.deal_breaker_risks) ? risk.deal_breaker_risks : []),
+    ...(Array.isArray(risk.acquisition_risk_factors) ? risk.acquisition_risk_factors : []),
+  ]
+}
+
+function getRiskMix(data) {
+  return getRiskItems(data).reduce(
+    (mix, item) => {
+      const severity = String(item.severity ?? '').toLowerCase()
+      if (severity in mix) {
+        mix[severity] += 1
+      }
+      return mix
+    },
+    { low: 0, medium: 0, high: 0 },
+  )
+}
+
+function createMeter(label, value, score, className = '') {
+  const meter = document.createElement('div')
+  meter.className = `metric-meter ${className}`.trim()
+
+  const row = document.createElement('div')
+  row.className = 'metric-meter-row'
+
+  const labelElement = document.createElement('span')
+  labelElement.textContent = label
+  row.appendChild(labelElement)
+
+  const valueElement = document.createElement('strong')
+  valueElement.textContent = value
+  row.appendChild(valueElement)
+
+  const track = document.createElement('i')
+  track.style.setProperty('--meter-value', `${clampPercent(score)}%`)
+
+  meter.append(row, track)
+  return meter
+}
+
+function createVisualCard(title, value, detail) {
+  const card = document.createElement('article')
+  card.className = 'visual-card'
+
+  const titleElement = document.createElement('span')
+  titleElement.textContent = title
+  card.appendChild(titleElement)
+
+  const valueElement = document.createElement('strong')
+  valueElement.textContent = value
+  card.appendChild(valueElement)
+
+  if (detail) {
+    const detailElement = document.createElement('small')
+    detailElement.textContent = detail
+    card.appendChild(detailElement)
+  }
+
+  return card
+}
+
+function buildReportVisuals(data) {
+  const memo = data?.investment_memo ?? {}
+  const risk = data?.risk_analysis ?? {}
+  const riskMix = getRiskMix(data)
+  const highRiskCount = riskMix.high
+  const totalRisks = riskMix.low + riskMix.medium + riskMix.high
+  const openQuestionCount = Array.isArray(memo.open_questions) ? memo.open_questions.length : 0
+  const conditionCount = Array.isArray(memo.investment_committee_conditions)
+    ? memo.investment_committee_conditions.length
+    : 0
+  const nextStepCount = Array.isArray(memo.next_diligence_steps) ? memo.next_diligence_steps.length : 0
+
+  const section = document.createElement('section')
+  section.className = 'report-visuals'
+  section.setAttribute('aria-label', 'Report visuals')
+
+  const header = document.createElement('div')
+  header.className = 'visuals-header'
+  const headerTitle = document.createElement('strong')
+  headerTitle.textContent = 'Deal visuals'
+  const headerMeta = document.createElement('span')
+  headerMeta.textContent = `${totalRisks} risks tracked | ${openQuestionCount} open questions`
+  header.append(headerTitle, headerMeta)
+  section.appendChild(header)
+
+  const grid = document.createElement('div')
+  grid.className = 'visual-grid'
+
+  const recommendation = memo.recommendation ?? 'analysis'
+  const decisionCard = createVisualCard(
+    'Decision Signal',
+    toTitleCase(recommendation),
+    memo.overall_confidence ? `${memo.overall_confidence} memo confidence` : '',
+  )
+  decisionCard.appendChild(createMeter('Signal strength', `${scoreForRecommendation(recommendation)}%`, scoreForRecommendation(recommendation)))
+  grid.appendChild(decisionCard)
+
+  const confidenceCard = createVisualCard('Agent Confidence', 'Workstream View')
+  confidenceCard.append(
+    createMeter('Market', toTitleCase(data?.market_analysis?.overall_confidence || 'unknown'), scoreForConfidence(data?.market_analysis?.overall_confidence)),
+    createMeter('Financial', toTitleCase(data?.financial_analysis?.overall_confidence || 'unknown'), scoreForConfidence(data?.financial_analysis?.overall_confidence)),
+    createMeter('Risk', toTitleCase(data?.risk_analysis?.overall_confidence || 'unknown'), scoreForConfidence(data?.risk_analysis?.overall_confidence)),
+    createMeter('Memo', toTitleCase(memo.overall_confidence || 'unknown'), scoreForConfidence(memo.overall_confidence)),
+  )
+  grid.appendChild(confidenceCard)
+
+  const riskCard = createVisualCard(
+    'Risk Mix',
+    risk.overall_deal_risk_score ? toTitleCase(risk.overall_deal_risk_score) : `${highRiskCount} High`,
+    risk.overall_risk_rating ? `${risk.overall_risk_rating} overall rating` : '',
+  )
+  const riskMax = Math.max(riskMix.low, riskMix.medium, riskMix.high, 1)
+  riskCard.append(
+    createMeter('Low', String(riskMix.low), (riskMix.low / riskMax) * 100, 'meter-low'),
+    createMeter('Medium', String(riskMix.medium), (riskMix.medium / riskMax) * 100, 'meter-medium'),
+    createMeter('High', String(riskMix.high), (riskMix.high / riskMax) * 100, 'meter-high'),
+  )
+  grid.appendChild(riskCard)
+
+  const diligenceCard = createVisualCard('Diligence Queue', `${openQuestionCount + conditionCount + nextStepCount} Items`)
+  const diligenceMax = Math.max(openQuestionCount, conditionCount, nextStepCount, 1)
+  diligenceCard.append(
+    createMeter('Conditions', String(conditionCount), (conditionCount / diligenceMax) * 100),
+    createMeter('Open Questions', String(openQuestionCount), (openQuestionCount / diligenceMax) * 100),
+    createMeter('Next Steps', String(nextStepCount), (nextStepCount / diligenceMax) * 100),
+  )
+  grid.appendChild(diligenceCard)
+
+  section.appendChild(grid)
+  return section
+}
+
+function loadDashboardSummaries() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(DASHBOARD_STORAGE_KEY) ?? '[]')
+    return Array.isArray(stored) ? stored : []
+  } catch {
+    return []
+  }
+}
+
+function saveDashboardSummary(data, buyerContext, targetContext) {
+  const memo = data?.investment_memo ?? {}
+  const riskMix = getRiskMix(data)
+  const summaries = loadDashboardSummaries()
+  // Store only display summaries until authenticated database persistence is wired.
+  const summary = {
+    id: data?.session_id ?? `analysis-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    title: memo.headline || memo.recommendation_rationale || 'Untitled analysis',
+    recommendation: memo.recommendation ?? 'analysis',
+    confidence: memo.overall_confidence ?? 'unknown',
+    riskRating: data?.risk_analysis?.overall_deal_risk_score ?? data?.risk_analysis?.overall_risk_rating ?? 'unknown',
+    highRiskCount: riskMix.high,
+    openQuestions: Array.isArray(memo.open_questions) ? memo.open_questions.length : 0,
+    conditions: Array.isArray(memo.investment_committee_conditions) ? memo.investment_committee_conditions.length : 0,
+    buyerLength: buyerContext.length,
+    targetLength: targetContext.length,
+  }
+
+  const nextSummaries = [summary, ...summaries.filter((item) => item.id !== summary.id)].slice(0, 12)
+  window.localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(nextSummaries))
+  renderDashboard(nextSummaries)
+}
+
+function renderDashboard(providedSummaries) {
+  const summaries = providedSummaries ?? loadDashboardSummaries()
+  const total = summaries.length
+  const proceed = summaries.filter((item) => item.recommendation === 'proceed').length
+  const highRisk = summaries.filter((item) => item.highRiskCount > 0 || item.riskRating === 'high' || item.riskRating === 'critical').length
+  const questions = summaries.reduce((sum, item) => sum + (item.openQuestions ?? 0), 0)
+
+  dashboardCount.textContent = `${total} ${total === 1 ? 'analysis' : 'analyses'}`
+  dashboardTotal.textContent = String(total)
+  dashboardProceed.textContent = String(proceed)
+  dashboardRisk.textContent = String(highRisk)
+  dashboardQuestions.textContent = String(questions)
+  dashboardList.textContent = ''
+
+  if (total === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'dashboard-empty'
+    empty.textContent = 'Completed deal analyses will appear here.'
+    dashboardList.appendChild(empty)
+    return
+  }
+
+  summaries.forEach((item) => {
+    const card = document.createElement('article')
+    card.className = 'dashboard-card'
+
+    const cardHeader = document.createElement('div')
+    cardHeader.className = 'dashboard-card-header'
+
+    const title = document.createElement('strong')
+    title.textContent = item.title
+    cardHeader.appendChild(title)
+
+    const date = document.createElement('span')
+    date.textContent = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(item.createdAt))
+    cardHeader.appendChild(date)
+
+    const meta = document.createElement('div')
+    meta.className = 'dashboard-card-meta'
+    ;[
+      toTitleCase(item.recommendation),
+      `${toTitleCase(item.confidence)} confidence`,
+      `${toTitleCase(item.riskRating)} risk`,
+      `${item.openQuestions ?? 0} open questions`,
+    ].forEach((value) => {
+      const pill = document.createElement('span')
+      pill.textContent = value
+      meta.appendChild(pill)
+    })
+
+    const bars = document.createElement('div')
+    bars.className = 'dashboard-bars'
+    bars.append(
+      createMeter('Decision', `${scoreForRecommendation(item.recommendation)}%`, scoreForRecommendation(item.recommendation)),
+      createMeter('Confidence', toTitleCase(item.confidence), scoreForConfidence(item.confidence)),
+      createMeter('Risk', toTitleCase(item.riskRating), scoreForSeverity(item.riskRating), 'meter-high'),
+    )
+
+    card.append(cardHeader, meta, bars)
+    dashboardList.appendChild(card)
+  })
+}
+
 function appendResultElement(tagName, text, className) {
   const element = document.createElement(tagName)
   element.textContent = text
@@ -950,6 +1299,7 @@ function renderWorkflowResponse(data) {
   const reportUrl = resolveReportUrl(data)
   workflowResult.textContent = ''
   workflowDock.classList.add('has-result')
+  workflowResult.appendChild(buildReportVisuals(data))
 
   appendResultElement(
     'strong',
@@ -1055,6 +1405,7 @@ form.addEventListener('submit', async (event) => {
     const data = await response.json()
     workflowStatus.textContent = resolveReportUrl(data) ? 'Report ready' : 'Complete'
     renderWorkflowResponse(data)
+    saveDashboardSummary(data, buyerContext, targetContext)
     completeWorkflowLoader()
   } catch (error) {
     const didTimeout = error?.name === 'AbortError'
