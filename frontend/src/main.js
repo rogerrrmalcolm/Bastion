@@ -16,33 +16,45 @@ app.innerHTML = `
         <h1>Diligence terminal</h1>
       </div>
       <form id="workflow-form" class="workflow-form">
-        <label class="upload-target" for="pdf-upload">
-          <span class="upload-icon">+</span>
-          <span>
-            <strong>Attach PDFs</strong>
-            <small id="file-summary">No files selected</small>
-          </span>
-        </label>
-        <input id="pdf-upload" type="file" accept="application/pdf" multiple />
         <div class="deal-fields">
-          <label class="prompt-field company-field">
-            <span>Buyer / acquirer</span>
-            <textarea
-              id="buyer-context"
-              minlength="10"
-              placeholder="Paste buyer strategy, business profile, financing capacity, rationale, and constraints."
-              required
-            ></textarea>
-          </label>
-          <label class="prompt-field company-field">
-            <span>Target company</span>
-            <textarea
-              id="target-context"
-              minlength="10"
-              placeholder="Paste target financials, product, market position, risks, customer details, or ticker."
-              required
-            ></textarea>
-          </label>
+          <div class="company-panel">
+            <label class="upload-target company-upload" for="buyer-pdf-upload">
+              <span class="upload-icon">+</span>
+              <span>
+                <strong>Buyer PDFs</strong>
+                <small id="buyer-file-summary">No buyer PDFs selected</small>
+              </span>
+            </label>
+            <input id="buyer-pdf-upload" class="pdf-input" type="file" accept="application/pdf" multiple />
+            <label class="prompt-field company-field">
+              <span>Buyer / acquirer</span>
+              <textarea
+                id="buyer-context"
+                minlength="10"
+                placeholder="Paste buyer strategy, business profile, financing capacity, rationale, and constraints."
+                required
+              ></textarea>
+            </label>
+          </div>
+          <div class="company-panel">
+            <label class="upload-target company-upload" for="target-pdf-upload">
+              <span class="upload-icon">+</span>
+              <span>
+                <strong>Target PDFs</strong>
+                <small id="target-file-summary">No target PDFs selected</small>
+              </span>
+            </label>
+            <input id="target-pdf-upload" class="pdf-input" type="file" accept="application/pdf" multiple />
+            <label class="prompt-field company-field">
+              <span>Target company</span>
+              <textarea
+                id="target-context"
+                minlength="10"
+                placeholder="Paste target financials, product, market position, risks, customer details, or ticker."
+                required
+              ></textarea>
+            </label>
+          </div>
           <label class="prompt-field deal-question-field">
             <span>Deal thesis / questions</span>
             <textarea
@@ -88,9 +100,12 @@ app.innerHTML = `
 const sceneRoot = document.querySelector('#scene-root')
 const shell = document.querySelector('.experience-shell')
 const readoutProgress = document.querySelector('#readout-progress')
+const workflowDock = document.querySelector('.workflow-dock')
 const form = document.querySelector('#workflow-form')
-const fileInput = document.querySelector('#pdf-upload')
-const fileSummary = document.querySelector('#file-summary')
+const buyerFileInput = document.querySelector('#buyer-pdf-upload')
+const buyerFileSummary = document.querySelector('#buyer-file-summary')
+const targetFileInput = document.querySelector('#target-pdf-upload')
+const targetFileSummary = document.querySelector('#target-file-summary')
 const buyerInput = document.querySelector('#buyer-context')
 const targetInput = document.querySelector('#target-context')
 const promptInput = document.querySelector('#deal-prompt')
@@ -853,15 +868,23 @@ buyerInput.addEventListener('focus', () => setDealFocus('buyer'))
 targetInput.addEventListener('focus', () => setDealFocus('target'))
 promptInput.addEventListener('focus', () => setDealFocus('neutral'))
 
-fileInput.addEventListener('change', () => {
-  const files = Array.from(fileInput.files ?? [])
+function formatFileSummary(files, emptyLabel) {
   if (files.length === 0) {
-    fileSummary.textContent = 'No files selected'
-    return
+    return emptyLabel
   }
   const totalSize = files.reduce((sum, file) => sum + file.size, 0)
   const sizeMb = totalSize / 1024 / 1024
-  fileSummary.textContent = `${files.length} PDF${files.length === 1 ? '' : 's'} selected, ${sizeMb.toFixed(1)} MB`
+  return `${files.length} PDF${files.length === 1 ? '' : 's'} selected, ${sizeMb.toFixed(1)} MB`
+}
+
+buyerFileInput.addEventListener('change', () => {
+  const files = Array.from(buyerFileInput.files ?? [])
+  buyerFileSummary.textContent = formatFileSummary(files, 'No buyer PDFs selected')
+})
+
+targetFileInput.addEventListener('change', () => {
+  const files = Array.from(targetFileInput.files ?? [])
+  targetFileSummary.textContent = formatFileSummary(files, 'No target PDFs selected')
 })
 
 function appendResultElement(tagName, text, className) {
@@ -926,6 +949,7 @@ function renderWorkflowResponse(data) {
   const memo = data?.investment_memo ?? {}
   const reportUrl = resolveReportUrl(data)
   workflowResult.textContent = ''
+  workflowDock.classList.add('has-result')
 
   appendResultElement(
     'strong',
@@ -970,6 +994,7 @@ function renderWorkflowError(
   message = 'Start the FastAPI backend on port 8000, then run the workflow again.',
 ) {
   workflowResult.textContent = ''
+  workflowDock.classList.add('has-result')
   appendResultElement('strong', title)
   appendResultElement('span', message)
 }
@@ -984,20 +1009,26 @@ function parseDealQuestions(text) {
 form.addEventListener('submit', async (event) => {
   event.preventDefault()
 
-  const files = Array.from(fileInput.files ?? [])
-  const fileContext = files.length
-    ? `\n\nAttached PDF filenames for reference:\n${files.map((file) => `- ${file.name}`).join('\n')}`
+  const buyerFiles = Array.from(buyerFileInput.files ?? [])
+  const targetFiles = Array.from(targetFileInput.files ?? [])
+  const buyerFileContext = buyerFiles.length
+    ? `\n\nBuyer PDF filenames for reference:\n${buyerFiles.map((file) => `- ${file.name}`).join('\n')}`
     : ''
-  const buyerContext = buyerInput.value.trim()
-  const targetContext = targetInput.value.trim()
-  const dealContext = `${promptInput.value.trim()}${fileContext}`.trim()
+  const targetFileContext = targetFiles.length
+    ? `\n\nTarget PDF filenames for reference:\n${targetFiles.map((file) => `- ${file.name}`).join('\n')}`
+    : ''
+  const buyerContext = `${buyerInput.value.trim()}${buyerFileContext}`.trim()
+  const targetContext = `${targetInput.value.trim()}${targetFileContext}`.trim()
+  const dealContext = promptInput.value.trim()
   const questions = parseDealQuestions(promptInput.value.trim())
+  const hasFiles = buyerFiles.length > 0 || targetFiles.length > 0
 
   workflowStatus.textContent = 'Routing'
   workflowResult.textContent = ''
+  workflowDock.classList.remove('has-result')
   form.classList.add('is-running')
   setDealFocus('neutral')
-  startWorkflowLoader(files.length > 0 ? 'PDF + comparison' : 'Buyer-target comparison')
+  startWorkflowLoader(hasFiles ? 'PDF + comparison' : 'Buyer-target comparison')
   const controller = new AbortController()
   const timeoutId = window.setTimeout(() => {
     controller.abort()

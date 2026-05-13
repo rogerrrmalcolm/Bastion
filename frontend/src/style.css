@@ -154,6 +154,17 @@ input {
   animation: terminal-arrive 620ms ease 2.95s forwards;
 }
 
+.workflow-dock.has-result {
+  grid-template-columns: minmax(26rem, 0.95fr) minmax(27rem, 1.05fr);
+  align-items: start;
+  width: min(92rem, calc(100vw - 2rem));
+}
+
+.workflow-dock.has-result .dock-header,
+.workflow-dock.has-result .workflow-form {
+  grid-column: 1;
+}
+
 .experience-shell.is-arrived .workflow-dock {
   opacity: 1;
   transform: translateX(-50%) scale(1);
@@ -198,7 +209,7 @@ h1 {
 
 .workflow-form {
   display: grid;
-  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.9rem;
   align-items: stretch;
   min-width: 0;
@@ -211,7 +222,13 @@ h1 {
   min-width: 0;
 }
 
-#pdf-upload {
+.company-panel {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.pdf-input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -238,6 +255,10 @@ h1 {
     border-color 160ms ease,
     background 160ms ease,
     transform 160ms ease;
+}
+
+.company-upload {
+  min-height: 4.7rem;
 }
 
 .upload-target:hover {
@@ -360,48 +381,55 @@ h1 {
 
 .workflow-result {
   display: none;
-  gap: 0.35rem;
-  max-height: min(24rem, 46vh);
-  padding: 0.85rem;
+  gap: 0.85rem;
+  min-height: min(34rem, calc(100vh - 5rem));
+  max-height: calc(100vh - 5rem);
+  padding: clamp(1rem, 1.7vw, 1.35rem);
   overflow: auto;
   color: var(--jpm-paper);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(215, 196, 170, 0.32);
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(215, 196, 170, 0.42);
   border-radius: 8px;
 }
 
-.workflow-result:not(:empty) {
+.workflow-dock.has-result .workflow-result:not(:empty) {
   display: grid;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-content: start;
 }
 
 .workflow-result strong {
   color: var(--jpm-gold-light);
-  font-size: 0.86rem;
+  font-size: 1rem;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
 .workflow-result span {
-  font-size: 0.88rem;
-  line-height: 1.45;
+  font-size: 0.98rem;
+  line-height: 1.62;
 }
 
 .result-answer {
   display: grid;
-  gap: 0.28rem;
-  padding: 0.68rem;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(215, 196, 170, 0.24);
+  gap: 0.42rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(215, 196, 170, 0.3);
   border-radius: 8px;
 }
 
 .result-answer b {
   color: var(--jpm-paper);
-  font-size: 0.84rem;
+  font-size: 0.92rem;
+  line-height: 1.35;
 }
 
 .result-answer small {
   color: rgba(244, 239, 230, 0.62);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .workflow-result .result-emphasis {
@@ -658,6 +686,18 @@ h1 {
     bottom: 0.5rem;
   }
 
+  .workflow-dock.has-result {
+    grid-template-columns: 1fr;
+    width: min(42rem, calc(100vw - 1rem));
+  }
+
+  .workflow-dock.has-result .workflow-result:not(:empty) {
+    grid-column: 1;
+    grid-row: auto;
+    min-height: 18rem;
+    max-height: min(36rem, 48vh);
+  }
+
   .workflow-form {
     grid-template-columns: 1fr;
   }
@@ -708,7 +748,16 @@ h1 {
   }
 
   .workflow-form {
-    grid-template-columns: minmax(10rem, 13rem) minmax(18rem, 1fr) auto;
+    grid-template-columns: minmax(18rem, 1fr) auto;
+  }
+
+  .workflow-dock.has-result {
+    grid-template-columns: minmax(24rem, 0.9fr) minmax(24rem, 1.1fr);
+  }
+
+  .workflow-dock.has-result .workflow-result:not(:empty) {
+    min-height: min(22rem, calc(100vh - 3rem));
+    max-height: calc(100vh - 3rem);
   }
 
   .deal-fields {
@@ -723,7 +772,7 @@ h1 {
     min-height: 4.2rem;
   }
 
-  .workflow-result {
+  .workflow-dock:not(.has-result) .workflow-result {
     grid-column: 1 / -1;
     max-height: 4.8rem;
   }
