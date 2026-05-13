@@ -4,15 +4,78 @@ import * as THREE from 'three'
 const app = document.querySelector('#app')
 
 app.innerHTML = `
-  <main class="experience-shell is-traveling">
+  <main class="experience-shell is-traveling is-landing">
     <div id="scene-root" class="scene-root" aria-hidden="true"></div>
     <div class="flight-readout" aria-hidden="true">
       <span>Buyer Target Transit</span>
       <div class="readout-track"><i id="readout-progress"></i></div>
     </div>
+    <section class="landing-page" aria-label="Bastion overview">
+      <nav class="landing-nav" aria-label="Bastion navigation">
+        <strong>Bastion</strong>
+        <button id="landing-dashboard-button" class="ghost-action" type="button">Dashboard</button>
+      </nav>
+      <section class="landing-hero">
+        <div class="landing-copy">
+          <p class="eyebrow">AI diligence command center</p>
+          <h1>Bastion</h1>
+          <p>
+            Bastion turns buyer materials, target materials, market context, and deal questions into
+            an investment-committee-ready view of strategic fit, financial support, risk, and next
+            diligence steps.
+          </p>
+          <div class="landing-actions">
+            <button id="landing-start-button" class="primary-action" type="button">Open diligence terminal</button>
+            <button id="landing-learn-button" class="ghost-action" type="button">See workflow</button>
+          </div>
+        </div>
+      </section>
+      <section id="landing-workflow" class="landing-section" aria-label="Bastion workflow">
+        <div class="section-heading">
+          <p class="eyebrow">How Bastion Works</p>
+          <h2>From messy deal inputs to a decision-ready memo.</h2>
+        </div>
+        <div class="landing-grid">
+          <article>
+            <span>01</span>
+            <strong>Separate buyer and target context</strong>
+            <p>Upload or paste each side of the transaction independently so the analysis can compare capacity, fit, risks, and evidence gaps.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <strong>Route specialist agents</strong>
+            <p>Market, financial, and risk agents pressure-test the thesis before the memo agent synthesizes the committee view.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <strong>Generate visuals beside the report</strong>
+            <p>Decision signal, confidence, risk mix, and diligence queue visuals make the output faster to read and easier to discuss.</p>
+          </article>
+        </div>
+      </section>
+      <section class="landing-section landing-band" aria-label="Bastion audience">
+        <div class="section-heading">
+          <p class="eyebrow">Built For Deal Work</p>
+          <h2>A focused workspace for M&A screening and diligence follow-up.</h2>
+        </div>
+        <div class="landing-split">
+          <p>
+            Bastion is designed for analysts and deal teams who need a structured first-pass view of
+            whether a buyer-target combination is worth more work. It keeps the workflow close to the
+            actual questions: strategic fit, valuation support, downside risk, missing information,
+            and conditions before signing.
+          </p>
+          <button id="landing-bottom-start-button" class="primary-action" type="button">Start analysis</button>
+        </div>
+      </section>
+    </section>
     <section class="workflow-dock" aria-label="Bastion workflow input">
       <div class="dock-header">
         <div class="dock-heading">
+          <div class="terminal-logo" aria-label="Bastion">
+            <span>B</span>
+            <strong>Bastion</strong>
+          </div>
           <p class="eyebrow">Bastion M&A Workflow</p>
           <h1>Diligence terminal</h1>
         </div>
@@ -138,6 +201,10 @@ app.innerHTML = `
 const sceneRoot = document.querySelector('#scene-root')
 const shell = document.querySelector('.experience-shell')
 const readoutProgress = document.querySelector('#readout-progress')
+const landingStartButton = document.querySelector('#landing-start-button')
+const landingBottomStartButton = document.querySelector('#landing-bottom-start-button')
+const landingDashboardButton = document.querySelector('#landing-dashboard-button')
+const landingLearnButton = document.querySelector('#landing-learn-button')
 const workflowDock = document.querySelector('.workflow-dock')
 const analysisViewButton = document.querySelector('#analysis-view-button')
 const dashboardViewButton = document.querySelector('#dashboard-view-button')
@@ -953,6 +1020,19 @@ targetFileInput.addEventListener('change', () => {
   targetFileSummary.textContent = formatFileSummary(files, 'No target PDFs selected')
 })
 
+function openWorkspace(view = 'analysis') {
+  shell.classList.remove('is-landing')
+  markArrived()
+  switchWorkflowView(view)
+}
+
+landingStartButton.addEventListener('click', () => openWorkspace('analysis'))
+landingBottomStartButton.addEventListener('click', () => openWorkspace('analysis'))
+landingDashboardButton.addEventListener('click', () => openWorkspace('dashboard'))
+landingLearnButton.addEventListener('click', () => {
+  document.querySelector('#landing-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
+
 analysisViewButton.addEventListener('click', () => switchWorkflowView('analysis'))
 dashboardViewButton.addEventListener('click', () => switchWorkflowView('dashboard'))
 clearDashboardButton.addEventListener('click', () => {
@@ -1212,12 +1292,13 @@ function renderDashboard(providedSummaries) {
 
     const meta = document.createElement('div')
     meta.className = 'dashboard-card-meta'
-    ;[
+    const metaItems = [
       toTitleCase(item.recommendation),
       `${toTitleCase(item.confidence)} confidence`,
       `${toTitleCase(item.riskRating)} risk`,
       `${item.openQuestions ?? 0} open questions`,
-    ].forEach((value) => {
+    ]
+    metaItems.forEach((value) => {
       const pill = document.createElement('span')
       pill.textContent = value
       meta.appendChild(pill)
@@ -1428,6 +1509,7 @@ form.addEventListener('submit', async (event) => {
   }
 })
 
+renderDashboard()
 resizeRenderer()
 animate()
 window.setTimeout(markArrived, introDuration * 1000)
