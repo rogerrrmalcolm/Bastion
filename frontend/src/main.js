@@ -254,6 +254,7 @@ const tunnelLength = 170
 const nearLimit = 12
 const farLimit = -tunnelLength
 const introDuration = 2.85
+const workspaceTransitionDuration = 2.15
 const WORKFLOW_TIMEOUT_MS = 420000
 const DASHBOARD_STORAGE_KEY = 'bastion-dashboard-analyses'
 const confidenceScores = {
@@ -275,6 +276,12 @@ const recommendationScores = {
 }
 let hasArrived = false
 let dealFocus = 'neutral'
+const workspaceTransition = {
+  isActive: false,
+  startedAt: 0,
+  targetView: 'analysis',
+  timer: null,
+}
 
 const palette = {
   espresso: new THREE.Color(0x2b1a12),
@@ -838,6 +845,24 @@ function markArrived() {
   shell.classList.add('is-arrived')
 }
 
+function finishWorkspaceTransition() {
+  if (!workspaceTransition.isActive) {
+    return
+  }
+
+  workspaceTransition.isActive = false
+  if (workspaceTransition.timer) {
+    window.clearTimeout(workspaceTransition.timer)
+    workspaceTransition.timer = null
+  }
+  markArrived()
+  shell.classList.remove('is-landing', 'is-transitioning')
+  switchWorkflowView(workspaceTransition.targetView)
+  landingStartButton.disabled = false
+  landingBottomStartButton.disabled = false
+  landingDashboardButton.disabled = false
+}
+
 function setDealFocus(focus) {
   dealFocus = focus
   shell.classList.toggle('is-buyer-focus', focus === 'buyer')
@@ -864,8 +889,13 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.033)
   const elapsed = clock.elapsedTime
   const introProgress = smoothstep(0, introDuration, elapsed)
+  const transitionRaw = workspaceTransition.isActive
+    ? Math.min(1, Math.max(0, (performance.now() - workspaceTransition.startedAt) / (workspaceTransitionDuration * 1000)))
+    : 0
+  const transitionProgress = smoothstep(0, 1, transitionRaw)
+  const transitionPulse = Math.sin(transitionProgress * Math.PI)
   const positions = stars.geometry.attributes.position.array
-  const speed = 30 + (1 - introProgress) * 34
+  const speed = 30 + (1 - introProgress) * 34 + transitionPulse * 82
 
   for (let i = 0; i < positions.length; i += 3) {
     const priorPath = tunnelPathOffset(positions[i + 2], elapsed - delta)
@@ -886,7 +916,7 @@ function animate() {
   stars.geometry.attributes.position.needsUpdate = true
 
   rings.children.forEach((ring, index) => {
-    ring.position.z += ring.userData.speed * delta * (1 + (1 - introProgress) * 1.65)
+    ring.position.z += ring.userData.speed * delta * (1 + (1 - introProgress) * 1.65 + transitionPulse * 2.25)
     const ringPath = tunnelPathOffset(ring.position.z + ring.userData.pathPhase, elapsed)
     const pathIntensity = hasArrived ? 0.46 : 1
     ring.position.x = ringPath.x * pathIntensity
@@ -894,7 +924,7 @@ function animate() {
     ring.rotation.z += delta * (index % 2 === 0 ? 0.2 : -0.12)
     ring.rotation.x = Math.sin(elapsed * 0.45 + index * 0.12) * 0.09 * pathIntensity
     ring.rotation.y = Math.cos(elapsed * 0.36 + index * 0.1) * 0.08 * pathIntensity
-    ring.material.opacity = 0.09 + Math.max(0, 1 - Math.abs(ring.position.z) / 80) * 0.22
+    ring.material.opacity = 0.09 + Math.max(0, 1 - Math.abs(ring.position.z) / 80) * 0.22 + transitionPulse * 0.08
 
     if (ring.position.z > nearLimit) {
       ring.position.z = farLimit
@@ -903,13 +933,13 @@ function animate() {
 
   const symbolFade = 1 - smoothstep(2.35, introDuration + 0.35, elapsed)
   financeSymbols.children.forEach((sprite) => {
-    sprite.position.z += sprite.userData.speed * delta
+    sprite.position.z += sprite.userData.speed * delta * (1 + transitionPulse * 1.6)
     const path = tunnelPathOffset(sprite.position.z, elapsed)
     const orbit = sprite.userData.angle + elapsed * sprite.userData.orbitSpeed + sprite.position.z * 0.045
     sprite.position.x = path.x + Math.cos(orbit) * sprite.userData.radius
     sprite.position.y = path.y + Math.sin(orbit * 0.94) * sprite.userData.radius * 0.78
     sprite.material.rotation += sprite.userData.spin * delta
-    sprite.material.opacity = 0.92 * symbolFade
+    sprite.material.opacity = 0.92 * symbolFade * (1 - transitionProgress * 0.65)
     sprite.scale.setScalar(sprite.userData.baseScale * (1 + Math.max(0, sprite.position.z) * 0.035))
 
     if (sprite.position.z > nearLimit + 2) {
@@ -925,10 +955,10 @@ function animate() {
 
   const gatePath = tunnelPathOffset(arrivalGate.position.z, elapsed)
   arrivalGate.rotation.z = elapsed * 0.18
-  arrivalGate.position.z = -76 + introProgress * 48 + Math.sin(elapsed * 0.7) * 1.4
+  arrivalGate.position.z = -76 + introProgress * 48 + Math.sin(elapsed * 0.7) * 1.4 + transitionPulse * 23 + transitionProgress * 5
   arrivalGate.position.x = gatePath.x * 0.58
   arrivalGate.position.y = gatePath.y * 0.58
-  arrivalGate.scale.setScalar(0.72 + introProgress * 0.46 + Math.sin(elapsed * 1.3) * 0.035)
+  arrivalGate.scale.setScalar(0.72 + introProgress * 0.46 + Math.sin(elapsed * 1.3) * 0.035 + transitionPulse * 0.85)
 
   const compareBias = agentPathState.isRunning
     ? Math.sin(elapsed * 1.15)
@@ -937,14 +967,16 @@ function animate() {
       : dealFocus === 'target'
         ? 1
         : 0
-  const beaconOpacity = hasArrived ? (agentPathState.isRunning ? 0.95 : 0.48) : introProgress * 0.2
+  const beaconOpacity = workspaceTransition.isActive
+    ? 0.28 + transitionProgress * 0.68
+    : hasArrived ? (agentPathState.isRunning ? 0.95 : 0.48) : introProgress * 0.2
   const buyerEmphasis = compareBias < -0.16 ? 1 : 0.62
   const targetEmphasis = compareBias > 0.16 ? 1 : 0.62
   const beaconPath = tunnelPathOffset(-24, elapsed)
   dealBeacons.position.x = beaconPath.x * 0.22
   dealBeacons.position.y = 0.72 + beaconPath.y * 0.15 + Math.sin(elapsed * 0.9) * 0.08
-  dealBeacons.position.z = -23 + Math.sin(elapsed * 0.52) * 0.6
-  dealBeacons.rotation.z = Math.sin(elapsed * 0.28) * 0.08
+  dealBeacons.position.z = -23 + Math.sin(elapsed * 0.52) * 0.6 + transitionProgress * 7.5
+  dealBeacons.rotation.z = Math.sin(elapsed * 0.28) * 0.08 + transitionPulse * 0.18
   dealBeacons.userData.bridge.material.opacity = beaconOpacity * (0.45 + Math.abs(compareBias) * 0.36)
   ;[
     [dealBeacons.userData.buyer, buyerEmphasis],
@@ -961,31 +993,34 @@ function animate() {
     readoutProgress.style.transform = `scaleX(${Math.min(1, elapsed / introDuration)})`
   }
 
-  if (!hasArrived && elapsed >= introDuration) {
-    markArrived()
+  if (workspaceTransition.isActive && transitionRaw >= 1) {
+    finishWorkspaceTransition()
   }
 
   const cameraPath = tunnelPathOffset(-18 + introProgress * 10, elapsed)
   const lookPath = tunnelPathOffset(-40 + introProgress * 14, elapsed + 0.32)
-  const routeIntensity = hasArrived ? 0.28 : 1
+  const routeIntensity = workspaceTransition.isActive ? 0.14 : hasArrived ? 0.28 : 1
   const tunnelDrift = Math.sin(elapsed * 2.2) * (1 - introProgress) * 0.34
-  const targetX = pointer.x * (hasArrived ? 0.7 : 0.32)
+  const pointerDamp = 1 - transitionProgress * 0.78
+  const targetX = pointer.x * (hasArrived ? 0.7 : 0.32) * pointerDamp
     + cameraPath.x * 0.52 * routeIntensity
     + tunnelDrift
     + compareBias * (agentPathState.isRunning ? 0.95 : 0.52)
-  const targetY = pointer.y * (hasArrived ? 0.42 : 0.24)
+  const targetY = pointer.y * (hasArrived ? 0.42 : 0.24) * pointerDamp
     + cameraPath.y * 0.55 * routeIntensity
     + (agentPathState.isRunning ? Math.sin(elapsed * 0.82) * 0.58 : Math.abs(compareBias) * 0.12)
-  const targetZ = 18 - introProgress * 9
-  camera.position.x += (targetX - camera.position.x) * 0.045
-  camera.position.y += (targetY - camera.position.y) * 0.045
-  camera.position.z += (targetZ - camera.position.z) * 0.04
+    + transitionPulse * 0.35
+  const targetZ = 18 - introProgress * 9 - transitionPulse * 5.5 + transitionProgress * 0.75
+  const cameraEase = workspaceTransition.isActive ? 0.085 : 0.045
+  camera.position.x += (targetX - camera.position.x) * cameraEase
+  camera.position.y += (targetY - camera.position.y) * cameraEase
+  camera.position.z += (targetZ - camera.position.z) * (workspaceTransition.isActive ? 0.082 : 0.04)
   camera.lookAt(
     lookPath.x * 0.42 + pointer.x * 0.36,
     lookPath.y * 0.42 + pointer.y * 0.22,
-    -36 + introProgress * 7,
+    -36 + introProgress * 7 + transitionProgress * 10,
   )
-  camera.rotation.z += Math.sin(elapsed * 1.22) * 0.09 * routeIntensity
+  camera.rotation.z += Math.sin(elapsed * 1.22) * 0.09 * routeIntensity + transitionPulse * 0.018
 
   renderer.render(scene, camera)
   requestAnimationFrame(animate)
@@ -1021,8 +1056,21 @@ targetFileInput.addEventListener('change', () => {
 })
 
 function openWorkspace(view = 'analysis') {
-  shell.classList.remove('is-landing')
-  markArrived()
+  if (workspaceTransition.isActive) {
+    return
+  }
+
+  workspaceTransition.isActive = true
+  workspaceTransition.startedAt = performance.now()
+  workspaceTransition.targetView = view
+  workspaceTransition.timer = window.setTimeout(
+    finishWorkspaceTransition,
+    workspaceTransitionDuration * 1000 + 220,
+  )
+  landingStartButton.disabled = true
+  landingBottomStartButton.disabled = true
+  landingDashboardButton.disabled = true
+  shell.classList.add('is-transitioning')
   switchWorkflowView(view)
 }
 
@@ -1327,6 +1375,209 @@ function appendResultElement(tagName, text, className) {
   return element
 }
 
+function citationLabel(citation) {
+  const parts = [
+    citation.title,
+    citation.source && citation.source !== citation.title ? citation.source : '',
+    citation.page ? `p. ${citation.page}` : '',
+    citation.as_of ? `as of ${citation.as_of}` : '',
+  ].filter(Boolean)
+  return parts.join(' | ') || 'Source'
+}
+
+function appendBulletList(parent, items, className = 'report-bullets') {
+  if (!Array.isArray(items) || items.length === 0) {
+    return
+  }
+
+  const list = document.createElement('ul')
+  list.className = className
+  items.slice(0, 8).forEach((item) => {
+    const text = String(item ?? '').trim()
+    if (!text) {
+      return
+    }
+    const li = document.createElement('li')
+    li.textContent = text
+    list.appendChild(li)
+  })
+
+  if (list.childElementCount > 0) {
+    parent.appendChild(list)
+  }
+}
+
+function appendCitationList(parent, citations, limit = 5) {
+  const list = document.createElement('ul')
+  list.className = 'citation-list'
+  const usableCitations = Array.isArray(citations) ? citations.slice(0, limit) : []
+
+  usableCitations.forEach((citation) => {
+    const li = document.createElement('li')
+
+    const label = citation.url ? document.createElement('a') : document.createElement('span')
+    label.textContent = citationLabel(citation)
+    if (citation.url) {
+      label.href = citation.url
+      label.target = '_blank'
+      label.rel = 'noreferrer'
+    }
+    li.appendChild(label)
+
+    const meta = document.createElement('small')
+    meta.textContent = [
+      citation.agent_name ? toTitleCase(citation.agent_name) : '',
+      citation.source_type ? toTitleCase(citation.source_type) : '',
+      citation.relevance,
+    ].filter(Boolean).join(' | ')
+    li.appendChild(meta)
+
+    if (citation.excerpt) {
+      const excerpt = document.createElement('em')
+      excerpt.textContent = citation.excerpt
+      li.appendChild(excerpt)
+    }
+
+    list.appendChild(li)
+  })
+
+  if (list.childElementCount === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'citation-empty'
+    empty.textContent = 'No source citations returned for this item.'
+    parent.appendChild(empty)
+    return
+  }
+
+  parent.appendChild(list)
+}
+
+function appendReportPackage(report) {
+  if (!report || typeof report !== 'object') {
+    return
+  }
+
+  const packageSection = document.createElement('section')
+  packageSection.className = 'report-package'
+  packageSection.setAttribute('aria-label', 'Structured report service')
+
+  const header = document.createElement('div')
+  header.className = 'report-package-header'
+  const headerTitle = document.createElement('strong')
+  headerTitle.textContent = report.title || 'Compiled report'
+  const headerMeta = document.createElement('span')
+  headerMeta.textContent = [
+    report.recommendation ? toTitleCase(report.recommendation) : '',
+    Array.isArray(report.source_register) ? `${report.source_register.length} sources` : '',
+  ].filter(Boolean).join(' | ')
+  header.append(headerTitle, headerMeta)
+  packageSection.appendChild(header)
+
+  if (report.executive_summary) {
+    const summary = document.createElement('p')
+    summary.className = 'report-summary'
+    summary.textContent = report.executive_summary
+    packageSection.appendChild(summary)
+  }
+
+  if (Array.isArray(report.agent_contributions) && report.agent_contributions.length > 0) {
+    const agentSection = document.createElement('section')
+    agentSection.className = 'agent-source-map'
+
+    const agentTitle = document.createElement('strong')
+    agentTitle.textContent = 'Agent contributions and citations'
+    agentSection.appendChild(agentTitle)
+
+    const grid = document.createElement('div')
+    grid.className = 'agent-contribution-grid'
+
+    report.agent_contributions.forEach((contribution) => {
+      const card = document.createElement('article')
+      card.className = 'agent-contribution-card'
+
+      const cardHeader = document.createElement('div')
+      cardHeader.className = 'agent-card-header'
+
+      const label = document.createElement('strong')
+      label.textContent = contribution.label || toTitleCase(contribution.agent_name || 'Agent')
+      cardHeader.appendChild(label)
+
+      if (contribution.confidence) {
+        const confidence = document.createElement('span')
+        confidence.textContent = `${toTitleCase(contribution.confidence)} confidence`
+        cardHeader.appendChild(confidence)
+      }
+
+      const summary = document.createElement('p')
+      summary.textContent = contribution.summary || 'No contribution summary returned.'
+
+      const providesLabel = document.createElement('b')
+      providesLabel.textContent = 'Provides to final solution'
+
+      const sourcesLabel = document.createElement('b')
+      sourcesLabel.textContent = 'Sources used'
+
+      card.append(cardHeader, summary, providesLabel)
+      appendBulletList(card, contribution.provides_to_final_solution)
+      card.appendChild(sourcesLabel)
+      appendCitationList(card, contribution.citations, 4)
+      grid.appendChild(card)
+    })
+
+    agentSection.appendChild(grid)
+    packageSection.appendChild(agentSection)
+  }
+
+  if (Array.isArray(report.sections) && report.sections.length > 0) {
+    const sections = document.createElement('section')
+    sections.className = 'compiled-report-sections'
+
+    const sectionTitle = document.createElement('strong')
+    sectionTitle.textContent = 'Compiled report'
+    sections.appendChild(sectionTitle)
+
+    report.sections.forEach((section) => {
+      const article = document.createElement('article')
+      article.className = 'compiled-report-section'
+
+      const title = document.createElement('b')
+      title.textContent = section.title || 'Report section'
+      article.appendChild(title)
+
+      if (section.summary) {
+        const summary = document.createElement('p')
+        summary.textContent = section.summary
+        article.appendChild(summary)
+      }
+
+      appendBulletList(article, section.bullets)
+
+      if (Array.isArray(section.source_agents) && section.source_agents.length > 0) {
+        const agents = document.createElement('small')
+        agents.textContent = `Source agents: ${section.source_agents.map(toTitleCase).join(', ')}`
+        article.appendChild(agents)
+      }
+
+      appendCitationList(article, section.citations, 3)
+      sections.appendChild(article)
+    })
+
+    packageSection.appendChild(sections)
+  }
+
+  if (Array.isArray(report.source_limitations) && report.source_limitations.length > 0) {
+    const limitations = document.createElement('section')
+    limitations.className = 'source-limitations'
+    const title = document.createElement('strong')
+    title.textContent = 'Source limitations'
+    limitations.appendChild(title)
+    appendBulletList(limitations, report.source_limitations)
+    packageSection.appendChild(limitations)
+  }
+
+  workflowResult.appendChild(packageSection)
+}
+
 function appendQuestionAnswers(answers) {
   if (!Array.isArray(answers) || answers.length === 0) {
     return
@@ -1381,6 +1632,7 @@ function renderWorkflowResponse(data) {
   workflowResult.textContent = ''
   workflowDock.classList.add('has-result')
   workflowResult.appendChild(buildReportVisuals(data))
+  appendReportPackage(data?.report)
 
   appendResultElement(
     'strong',
@@ -1512,4 +1764,3 @@ form.addEventListener('submit', async (event) => {
 renderDashboard()
 resizeRenderer()
 animate()
-window.setTimeout(markArrived, introDuration * 1000)

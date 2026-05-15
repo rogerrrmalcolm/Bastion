@@ -7,6 +7,7 @@ from backend.agents.memo_agent import run_memo_agent
 from backend.agents.orchestrator_agent import DEFAULT_PLAN, run_orchestrator_agent
 from backend.agents.risk_agent import run_risk_agent
 from backend.memory import memory_store
+from backend.report_service import build_report_package
 from backend.schemas import (
     AgentExecutionStep,
     AnalyzeRequest,
@@ -184,11 +185,18 @@ Current structured M&A deal context:
         }
     )
     investment_memo = sequential_agent.run()["memo_agent"]
+    report = build_report_package(
+        orchestration_plan,
+        market_analysis,
+        financial_analysis,
+        risk_analysis,
+        investment_memo,
+    )
 
     memory_store.add_message(
         session.session_id,
         "assistant",
-        investment_memo.model_dump_json(indent=2),
+        report.model_dump_json(indent=2),
     )
 
     return AnalyzeResponse(
@@ -198,4 +206,5 @@ Current structured M&A deal context:
         financial_analysis=financial_analysis,
         risk_analysis=risk_analysis,
         investment_memo=investment_memo,
+        report=report,
     )

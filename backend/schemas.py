@@ -689,6 +689,75 @@ class MemoQuestionAnswer(BaseModel):
     )
 
 
+class ReportCitation(BaseModel):
+    agent_name: AgentName = Field(description="Agent that supplied this source.")
+    source_type: Literal[
+        "company_context",
+        "document",
+        "market_data",
+        "news_search",
+        "web_search",
+        "internal_risk_signal",
+        "calculated_metric",
+        "agent_output",
+        "analyst_inference",
+    ] = Field(description="Normalized source category.")
+    title: str = Field(description="Short source title or evidence label.")
+    source: str = Field(description="Document, endpoint, context, or agent output name.")
+    relevance: str = Field(description="How this source supports the final report.")
+    publisher: str | None = Field(default=None)
+    url: str | None = Field(default=None)
+    page: int | None = Field(default=None)
+    excerpt: str | None = Field(default=None)
+    as_of: str | None = Field(default=None)
+
+
+class AgentContribution(BaseModel):
+    agent_name: AgentName
+    label: str = Field(description="Human-readable agent label.")
+    summary: str = Field(description="What this agent contributed to the final solution.")
+    provides_to_final_solution: list[str] = Field(
+        default_factory=list,
+        description="Specific memo or decision components this agent supports.",
+    )
+    key_findings: list[str] = Field(
+        default_factory=list,
+        description="Highest-signal findings surfaced by this agent.",
+    )
+    citations: list[ReportCitation] = Field(
+        default_factory=list,
+        description="Normalized citations used by this agent.",
+    )
+    confidence: Literal["low", "medium", "high"] | None = None
+
+
+class ReportSection(BaseModel):
+    title: str
+    summary: str = ""
+    bullets: list[str] = Field(default_factory=list)
+    source_agents: list[AgentName] = Field(default_factory=list)
+    citations: list[ReportCitation] = Field(default_factory=list)
+
+
+class ReportPackage(BaseModel):
+    title: str = Field(description="Reader-facing report title.")
+    recommendation: str = Field(description="Normalized recommendation label.")
+    executive_summary: str = Field(description="Decision-oriented summary.")
+    agent_contributions: list[AgentContribution] = Field(
+        default_factory=list,
+        description="Agent-by-agent contribution and citation map.",
+    )
+    sections: list[ReportSection] = Field(
+        default_factory=list,
+        description="Structured report sections for the frontend report service.",
+    )
+    source_register: list[ReportCitation] = Field(
+        default_factory=list,
+        description="Deduplicated source register across all agents.",
+    )
+    source_limitations: list[str] = Field(default_factory=list)
+
+
 class InvestmentMemo(BaseModel):
     headline: str = Field(
         default="",
@@ -747,6 +816,7 @@ class AnalyzeResponse(BaseModel):
     financial_analysis: FinancialAnalysis
     risk_analysis: RiskAnalysis
     investment_memo: InvestmentMemo
+    report: ReportPackage
 
 
 class ChatRequest(BaseModel):

@@ -62,6 +62,10 @@ Investment committee standard:
   not unsupported price targets
 - key_data_points should include only specialist-backed facts or conclusions;
   do not create new metrics in the memo
+- key_data_points must preserve the source_agent for each item and include
+  citations when the specialist output provides them; include at least one
+  market_agent, one financial_agent, and one risk_agent data point when evidence
+  exists
 - next_diligence_steps should be actionable workstreams, not generic follow-up
 
 Direct-answer requirement:

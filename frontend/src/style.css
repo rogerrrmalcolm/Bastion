@@ -140,6 +140,13 @@ input {
   background:
     linear-gradient(90deg, rgba(43, 26, 18, 0.92), rgba(43, 26, 18, 0.48) 48%, rgba(244, 239, 230, 0.1)),
     linear-gradient(180deg, rgba(43, 26, 18, 0.62), rgba(43, 26, 18, 0.14) 38%, rgba(244, 239, 230, 0.86) 82%);
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+  transition:
+    opacity 760ms ease,
+    transform 920ms ease,
+    filter 760ms ease;
 }
 
 .experience-shell:not(.is-landing) .landing-page {
@@ -148,10 +155,25 @@ input {
   pointer-events: none;
 }
 
+.experience-shell.is-transitioning .landing-page {
+  opacity: 0;
+  transform: scale(1.035);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
 .experience-shell.is-landing .workflow-dock {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
+}
+
+.experience-shell.is-transitioning .workflow-dock {
+  visibility: visible;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: none;
+  animation: terminal-materialize 2.15s cubic-bezier(0.2, 0.72, 0.18, 1) forwards;
 }
 
 .landing-nav {
@@ -237,6 +259,12 @@ input {
 
 .ghost-action:hover {
   background: rgba(255, 255, 255, 0.17);
+}
+
+.primary-action:disabled,
+.ghost-action:disabled {
+  cursor: wait;
+  opacity: 0.56;
 }
 
 .landing-section {
@@ -373,6 +401,32 @@ input {
   to {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes terminal-materialize {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 2.4rem)) scale(0.84);
+    filter: blur(14px);
+  }
+
+  32% {
+    opacity: 0.12;
+    transform: translate(-50%, calc(-50% + 1.45rem)) scale(0.9);
+    filter: blur(10px);
+  }
+
+  58% {
+    opacity: 0.58;
+    transform: translate(-50%, calc(-50% + 0.45rem)) scale(0.97);
+    filter: blur(3px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    filter: blur(0);
   }
 }
 
@@ -707,6 +761,139 @@ h1 {
   gap: 0.75rem;
   padding-bottom: 0.3rem;
   border-bottom: 1px solid rgba(215, 196, 170, 0.2);
+}
+
+.report-package,
+.agent-source-map,
+.compiled-report-sections,
+.source-limitations {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.report-package {
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(215, 196, 170, 0.28);
+  border-radius: 8px;
+}
+
+.report-package-header,
+.agent-card-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.report-package-header strong,
+.agent-source-map > strong,
+.compiled-report-sections > strong,
+.source-limitations > strong {
+  color: var(--jpm-gold-light);
+  font-size: 0.9rem;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.report-package-header span,
+.agent-card-header span {
+  color: rgba(244, 239, 230, 0.64);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.report-summary,
+.agent-contribution-card p,
+.compiled-report-section p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.agent-contribution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.agent-contribution-card,
+.compiled-report-section {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(215, 196, 170, 0.25);
+  border-radius: 8px;
+}
+
+.agent-card-header strong,
+.compiled-report-section b,
+.agent-contribution-card b {
+  color: var(--jpm-paper);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.report-bullets,
+.citation-list {
+  display: grid;
+  gap: 0.38rem;
+  margin: 0;
+  padding-left: 1.05rem;
+}
+
+.report-bullets li,
+.citation-list li {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.citation-list li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.citation-list a,
+.citation-list span {
+  color: var(--jpm-gold-light);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.citation-list a {
+  text-decoration: none;
+}
+
+.citation-list a:hover {
+  text-decoration: underline;
+}
+
+.citation-list small,
+.compiled-report-section small {
+  color: rgba(244, 239, 230, 0.56);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.citation-list em {
+  color: rgba(244, 239, 230, 0.68);
+  font-size: 0.76rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.citation-empty {
+  margin: 0;
+  color: rgba(244, 239, 230, 0.58);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .visuals-header,
@@ -1242,7 +1429,8 @@ h1 {
   }
 
   .visual-grid,
-  .dashboard-list {
+  .dashboard-list,
+  .agent-contribution-grid {
     grid-template-columns: 1fr;
   }
 
