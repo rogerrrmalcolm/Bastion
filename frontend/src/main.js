@@ -293,35 +293,29 @@ const palette = {
 }
 
 const agentGraph = {
+  centralNodeId: 'bastion',
   nodes: [
-    { id: 'buyer', label: 'Buyer', role: 'acquirer profile', x: 10, y: 44 },
-    { id: 'target', label: 'Target', role: 'company profile', x: 25, y: 62 },
-    { id: 'orchestrator', label: 'Orchestrator', role: 'route planner', x: 32, y: 28 },
-    { id: 'market', label: 'Market Agent', role: 'sector signals', x: 48, y: 16 },
-    { id: 'financial', label: 'Financial Agent', role: 'QoE and valuation', x: 61, y: 47 },
-    { id: 'risk', label: 'Risk Agent', role: 'risk matrix', x: 74, y: 25 },
-    { id: 'memo', label: 'Memo Agent', role: 'IC synthesis', x: 80, y: 58 },
-    { id: 'output', label: 'Answer', role: 'buyer-target memo', x: 86, y: 82 },
-    { id: 'documents', label: 'Documents', role: 'PDF context', x: 39, y: 82 },
-    { id: 'market-data', label: 'Market Data', role: 'live signals', x: 66, y: 79 },
+    { id: 'bastion', label: 'Bastion', role: 'agent routing core', x: 50, y: 50, badge: 'B', kind: 'core' },
+    { id: 'buyer', label: 'Buyer', role: 'acquirer profile', x: 17, y: 25, badge: 'BY' },
+    { id: 'target', label: 'Target', role: 'company profile', x: 18, y: 67, badge: 'TG' },
+    { id: 'documents', label: 'Documents', role: 'PDF context', x: 35, y: 18, badge: 'PDF' },
+    { id: 'market-data', label: 'Market Data', role: 'live signals', x: 32, y: 83, badge: 'MD' },
+    { id: 'market', label: 'Market Agent', role: 'sector signals', x: 63, y: 18, badge: 'MA' },
+    { id: 'financial', label: 'Financial Agent', role: 'QoE and valuation', x: 82, y: 35, badge: 'FA' },
+    { id: 'risk', label: 'Risk Agent', role: 'risk matrix', x: 82, y: 66, badge: 'RA' },
+    { id: 'memo', label: 'Memo Agent', role: 'IC synthesis', x: 67, y: 83, badge: 'IC' },
+    { id: 'output', label: 'Answer', role: 'buyer-target memo', x: 50, y: 87, badge: 'OUT' },
   ],
   edges: [
-    ['buyer', 'target', 1],
-    ['buyer', 'orchestrator', 6],
-    ['target', 'orchestrator', 1],
-    ['target', 'documents', 6],
-    ['orchestrator', 'market', 1],
-    ['orchestrator', 'financial', 7],
-    ['orchestrator', 'memo', 14],
-    ['market', 'financial', 2],
-    ['market', 'risk', 8],
-    ['financial', 'risk', 2],
-    ['financial', 'market-data', 6],
-    ['market-data', 'risk', 6],
-    ['documents', 'financial', 8],
-    ['documents', 'risk', 9],
-    ['risk', 'memo', 1],
-    ['memo', 'output', 1],
+    ['bastion', 'buyer', 1],
+    ['bastion', 'target', 2],
+    ['bastion', 'documents', 3],
+    ['bastion', 'market-data', 4],
+    ['bastion', 'market', 5],
+    ['bastion', 'financial', 6],
+    ['bastion', 'risk', 7],
+    ['bastion', 'memo', 8],
+    ['bastion', 'output', 9],
   ],
 }
 
@@ -354,6 +348,21 @@ function tunnelPathOffset(z, elapsed = 0) {
 
 function edgeId(from, to) {
   return [from, to].sort().join('__')
+}
+
+function wirePath(fromNode, toNode, index) {
+  const dx = toNode.x - fromNode.x
+  const dy = toNode.y - fromNode.y
+  const offset = ((index % 3) - 1) * 1.8
+  const horizontalFirst = Math.abs(dx) >= Math.abs(dy)
+  const bendX = fromNode.x + dx * 0.48 + offset
+  const bendY = fromNode.y + dy * 0.48 - offset
+
+  if (horizontalFirst) {
+    return `M ${fromNode.x} ${fromNode.y} L ${bendX} ${fromNode.y} L ${bendX} ${toNode.y} L ${toNode.x} ${toNode.y}`
+  }
+
+  return `M ${fromNode.x} ${fromNode.y} L ${fromNode.x} ${bendY} L ${toNode.x} ${bendY} L ${toNode.x} ${toNode.y}`
 }
 
 function computeDijkstraRoute(graph, startId, endId) {
@@ -412,29 +421,39 @@ function computeDijkstraRoute(graph, startId, endId) {
 }
 
 function renderWorkflowMap() {
-  const dijkstra = computeDijkstraRoute(agentGraph, 'buyer', 'output')
-  agentPathState.route = dijkstra.route
+  const dijkstra = computeDijkstraRoute(agentGraph, agentGraph.centralNodeId, 'output')
+  agentPathState.route = dijkstra.visitOrder.length > 0 ? dijkstra.visitOrder : dijkstra.route
   agentPathState.distances = dijkstra.distances
   agentPathState.visitOrder = dijkstra.visitOrder
 
-  const lines = agentGraph.edges.map(([from, to, weight]) => {
+  const lines = agentGraph.edges.map(([from, to, weight], index) => {
     const fromNode = agentGraph.nodes.find((node) => node.id === from)
     const toNode = agentGraph.nodes.find((node) => node.id === to)
     return `
       <g class="map-edge" data-edge="${edgeId(from, to)}">
-        <line x1="${fromNode.x}" y1="${fromNode.y}" x2="${toNode.x}" y2="${toNode.y}" />
-        <text x="${(fromNode.x + toNode.x) / 2}" y="${(fromNode.y + toNode.y) / 2}">${weight}</text>
+        <path d="${wirePath(fromNode, toNode, index)}" pathLength="100" vector-effect="non-scaling-stroke" />
+        <circle class="wire-contact" cx="${toNode.x}" cy="${toNode.y}" r="0.72" />
+        <text x="${fromNode.x + (toNode.x - fromNode.x) * 0.56}" y="${fromNode.y + (toNode.y - fromNode.y) * 0.56}">d${weight}</text>
       </g>
     `
   }).join('')
 
-  const nodes = agentGraph.nodes.map((node) => `
-    <div class="map-node" data-node="${node.id}" style="left: ${node.x}%; top: ${node.y}%;">
+  const nodes = agentGraph.nodes.map((node) => {
+    const classes = [
+      'map-node',
+      node.kind === 'core' ? 'is-core' : '',
+      node.id === 'output' ? 'is-output' : '',
+    ].filter(Boolean).join(' ')
+
+    return `
+    <div class="${classes}" data-node="${node.id}" style="left: ${node.x}%; top: ${node.y}%;">
+      <i aria-hidden="true">${node.badge ?? node.label.slice(0, 2).toUpperCase()}</i>
       <strong>${node.label}</strong>
       <span>${node.role}</span>
       <small data-distance="${node.id}">cost inf</small>
     </div>
-  `).join('')
+  `
+  }).join('')
 
   workflowMap.innerHTML = `
     <svg class="map-edges" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -446,6 +465,7 @@ function renderWorkflowMap() {
 
 function setLoaderStep(stepIndex, isComplete = false) {
   const route = agentPathState.route
+  const centralNodeId = agentGraph.centralNodeId
   const boundedIndex = Math.min(stepIndex, route.length - 1)
   const activeId = route[boundedIndex]
   const activeNode = agentGraph.nodes.find((node) => node.id === activeId)
@@ -466,15 +486,16 @@ function setLoaderStep(stepIndex, isComplete = false) {
       : 'cost inf'
   })
 
+  const activeWireTarget = activeId === centralNodeId ? route[boundedIndex + 1] : activeId
+  const activeEdgeId = activeWireTarget && activeWireTarget !== centralNodeId
+    ? edgeId(centralNodeId, activeWireTarget)
+    : ''
+
   workflowMap.querySelectorAll('.map-edge').forEach((edgeElement) => {
-    const isRouteEdge = route.some((nodeId, index) => {
-      if (index === 0 || index > boundedIndex) {
-        return false
-      }
-      return edgeId(route[index - 1], nodeId) === edgeElement.dataset.edge
-    })
-    const isActiveEdge = boundedIndex > 0
-      && edgeId(route[boundedIndex - 1], route[boundedIndex]) === edgeElement.dataset.edge
+    const isRouteEdge = [...reached].some((nodeId) => (
+      nodeId !== centralNodeId && edgeId(centralNodeId, nodeId) === edgeElement.dataset.edge
+    ))
+    const isActiveEdge = edgeElement.dataset.edge === activeEdgeId
     edgeElement.classList.toggle('is-route', isRouteEdge)
     edgeElement.classList.toggle('is-active', isActiveEdge && !isComplete)
   })
@@ -486,15 +507,13 @@ function setLoaderStep(stepIndex, isComplete = false) {
 }
 
 function startWorkflowLoader(mode) {
-  if (workflowMap.childElementCount === 0) {
-    renderWorkflowMap()
-  }
+  renderWorkflowMap()
 
   agentPathState.startedAt = performance.now()
   agentPathState.isRunning = true
   agentPathState.isAwaitingResponse = false
   responseMode.textContent = mode
-  loaderCaption.textContent = 'Comparing buyer and target through the shortest diligence route.'
+  loaderCaption.textContent = 'Bastion is energizing the agent circuit around the deal.'
   workflowLoader.setAttribute('aria-hidden', 'false')
   shell.classList.add('is-processing')
   shell.classList.add('is-comparing')
@@ -505,7 +524,7 @@ function startWorkflowLoader(mode) {
     }
 
     const elapsed = timestamp - agentPathState.startedAt
-    const stepDuration = 2600
+    const stepDuration = 1500
     const finalIndex = agentPathState.route.length - 1
     const lastWorkingIndex = Math.max(0, finalIndex - 1)
     const routeIndex = Math.min(
@@ -517,7 +536,7 @@ function startWorkflowLoader(mode) {
     if (routeIndex === lastWorkingIndex && !agentPathState.isAwaitingResponse) {
       agentPathState.isAwaitingResponse = true
       workflowStatus.textContent = 'Finalizing'
-      loaderCaption.textContent = 'Comparison route complete. Waiting for Bastion to produce the answer.'
+      loaderCaption.textContent = 'Agent circuit lit. Waiting for Bastion to produce the answer.'
     }
 
     agentPathState.frame = requestAnimationFrame(tick)
@@ -538,7 +557,7 @@ function stopWorkflowLoader() {
 
 function completeWorkflowLoader() {
   stopWorkflowLoader()
-  loaderCaption.textContent = 'Shortest route complete. Rendering response.'
+  loaderCaption.textContent = 'Bastion circuit complete. Rendering response.'
   setLoaderStep(agentPathState.route.length - 1, true)
 
   window.setTimeout(() => {

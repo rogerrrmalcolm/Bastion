@@ -1107,8 +1107,8 @@ h1 {
   visibility: hidden;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 34%, rgba(215, 196, 170, 0.22), transparent 30rem),
-    rgba(244, 239, 230, 0.74);
+    linear-gradient(180deg, rgba(8, 13, 21, 0.9), rgba(16, 21, 26, 0.78)),
+    rgba(244, 239, 230, 0.18);
   opacity: 0;
   transition:
     opacity 260ms ease,
@@ -1134,10 +1134,14 @@ h1 {
   padding: clamp(1rem, 2vw, 1.35rem);
   overflow: auto;
   color: var(--jpm-paper);
-  background: rgba(43, 26, 18, 0.9);
-  border: 1px solid rgba(215, 196, 170, 0.34);
+  background:
+    linear-gradient(180deg, rgba(16, 27, 39, 0.96), rgba(10, 16, 24, 0.96)),
+    rgba(43, 26, 18, 0.9);
+  border: 1px solid rgba(105, 232, 255, 0.28);
   border-radius: 8px;
-  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.56);
+  box-shadow:
+    0 26px 90px rgba(0, 0, 0, 0.56),
+    inset 0 0 0 1px rgba(255, 210, 122, 0.08);
   backdrop-filter: blur(18px);
 }
 
@@ -1168,60 +1172,120 @@ h1 {
   min-height: clamp(21rem, 46vh, 28rem);
   overflow: hidden;
   background:
-    linear-gradient(rgba(215, 196, 170, 0.13) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(215, 196, 170, 0.13) 1px, transparent 1px),
-    rgba(58, 36, 24, 0.64);
-  background-size: 2rem 2rem;
-  border: 1px solid rgba(215, 196, 170, 0.24);
+    linear-gradient(rgba(105, 232, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(105, 232, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(255, 210, 122, 0.08) 0 1px, transparent 1px 1.6rem),
+    #0d151e;
+  background-size: 2rem 2rem, 2rem 2rem, 1.6rem 1.6rem, auto;
+  border: 1px solid rgba(105, 232, 255, 0.25);
   border-radius: 8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 2rem rgba(105, 232, 255, 0.08);
+}
+
+.workflow-map::before,
+.workflow-map::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+}
+
+.workflow-map::before {
+  background:
+    linear-gradient(90deg, transparent 0 9%, rgba(105, 232, 255, 0.18) 9% calc(9% + 1px), transparent calc(9% + 1px) 100%),
+    linear-gradient(0deg, transparent 0 13%, rgba(255, 210, 122, 0.13) 13% calc(13% + 1px), transparent calc(13% + 1px) 100%);
+  background-size: 8.5rem 100%, 100% 7rem;
+  opacity: 0.55;
+}
+
+.workflow-map::after {
+  border: 1px solid rgba(105, 232, 255, 0.18);
+  border-radius: inherit;
 }
 
 .map-edges {
   position: absolute;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
 }
 
-.map-edge line {
-  stroke: rgba(215, 196, 170, 0.28);
-  stroke-width: 0.55;
+.map-edge path {
+  fill: none;
+  stroke: rgba(105, 232, 255, 0.24);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.82;
   transition:
     stroke 220ms ease,
     stroke-width 220ms ease,
     filter 220ms ease;
 }
 
+.wire-contact {
+  fill: rgba(105, 232, 255, 0.38);
+  filter: drop-shadow(0 0 0.2rem rgba(105, 232, 255, 0.26));
+  transition:
+    fill 220ms ease,
+    r 220ms ease,
+    filter 220ms ease;
+}
+
 .map-edge text {
-  fill: rgba(244, 239, 230, 0.62);
-  font-size: 2.5px;
+  fill: rgba(232, 247, 255, 0.42);
+  font-size: 2px;
   font-weight: 800;
+  text-transform: uppercase;
 }
 
-.map-edge.is-route line {
-  stroke: rgba(215, 196, 170, 0.82);
-  stroke-width: 0.8;
+.map-edge.is-route path {
+  stroke: rgba(105, 232, 255, 0.92);
+  stroke-width: 1.05;
+  filter: drop-shadow(0 0 0.28rem rgba(105, 232, 255, 0.58));
 }
 
-.map-edge.is-active line {
-  stroke: #ffffff;
-  stroke-width: 1.1;
-  filter: drop-shadow(0 0 0.45rem rgba(255, 255, 255, 0.55));
-  animation: edge-pulse 900ms ease-in-out infinite;
+.map-edge.is-route .wire-contact {
+  fill: #69e8ff;
+  filter: drop-shadow(0 0 0.48rem rgba(105, 232, 255, 0.85));
+}
+
+.map-edge.is-active path {
+  stroke: #ffd27a;
+  stroke-width: 1.42;
+  stroke-dasharray: 13 8;
+  filter: drop-shadow(0 0 0.55rem rgba(255, 210, 122, 0.78));
+  animation: wire-flow 720ms linear infinite;
+}
+
+.map-edge.is-active .wire-contact {
+  fill: #ffd27a;
+  r: 1.08;
+  filter: drop-shadow(0 0 0.6rem rgba(255, 210, 122, 0.95));
 }
 
 .map-node {
   position: absolute;
+  z-index: 2;
   display: grid;
-  gap: 0.16rem;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 0.15rem 0.5rem;
+  align-items: center;
   width: clamp(5.8rem, 10vw, 8rem);
   min-height: 4.25rem;
   padding: 0.62rem;
-  color: rgba(255, 255, 255, 0.78);
-  background: rgba(58, 36, 24, 0.92);
-  border: 1px solid rgba(215, 196, 170, 0.28);
+  color: rgba(232, 247, 255, 0.78);
+  background:
+    linear-gradient(145deg, rgba(20, 37, 52, 0.96), rgba(11, 18, 27, 0.96)),
+    rgba(58, 36, 24, 0.92);
+  border: 1px solid rgba(105, 232, 255, 0.28);
   border-radius: 8px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   transform: translate(-50%, -50%);
   transition:
     color 180ms ease,
@@ -1231,10 +1295,27 @@ h1 {
     transform 180ms ease;
 }
 
+.map-node i {
+  display: grid;
+  grid-row: 1 / span 3;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  color: #07111a;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+  background: #69e8ff;
+  border-radius: 6px;
+  box-shadow: 0 0 0.55rem rgba(105, 232, 255, 0.34);
+}
+
 .map-node strong,
 .map-node span,
 .map-node small {
   display: block;
+  grid-column: 2;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1248,37 +1329,72 @@ h1 {
 }
 
 .map-node span {
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(232, 247, 255, 0.62);
   font-size: 0.68rem;
 }
 
 .map-node small {
-  color: rgba(215, 196, 170, 0.72);
+  color: rgba(255, 210, 122, 0.75);
   font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
+.map-node.is-core {
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  width: clamp(7.4rem, 14vw, 10rem);
+  min-height: 5.3rem;
+  background:
+    linear-gradient(145deg, rgba(22, 46, 65, 0.98), rgba(8, 13, 21, 0.98)),
+    #101820;
+  border-color: rgba(105, 232, 255, 0.82);
+  box-shadow:
+    0 0 0 1px rgba(105, 232, 255, 0.24),
+    0 0 2rem rgba(105, 232, 255, 0.26),
+    0 18px 48px rgba(0, 0, 0, 0.42);
+}
+
+.map-node.is-core i {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: #08131c;
+  font-size: 1rem;
+  background: linear-gradient(135deg, #69e8ff, #ffd27a);
+  box-shadow:
+    0 0 0.9rem rgba(105, 232, 255, 0.58),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.46);
+}
+
+.map-node.is-output i {
+  background: #ffd27a;
+  box-shadow: 0 0 0.55rem rgba(255, 210, 122, 0.38);
+}
+
 .map-node.is-reached {
   color: var(--jpm-paper);
-  border-color: rgba(215, 196, 170, 0.72);
-  background: rgba(91, 58, 41, 0.94);
+  border-color: rgba(105, 232, 255, 0.72);
+  background:
+    linear-gradient(145deg, rgba(25, 55, 72, 0.96), rgba(12, 24, 34, 0.96)),
+    rgba(91, 58, 41, 0.94);
 }
 
 .map-node.is-active {
-  border-color: #ffffff;
+  border-color: #ffd27a;
   box-shadow:
-    0 0 0 3px rgba(255, 255, 255, 0.16),
-    0 18px 42px rgba(255, 255, 255, 0.16);
+    0 0 0 3px rgba(255, 210, 122, 0.16),
+    0 0 1.4rem rgba(255, 210, 122, 0.36),
+    0 18px 42px rgba(0, 0, 0, 0.3);
   transform: translate(-50%, -50%) scale(1.04);
 }
 
 .map-node.is-complete {
-  border-color: var(--jpm-gold);
-  background: rgba(91, 58, 41, 0.74);
+  border-color: #74f0a7;
+  background:
+    linear-gradient(145deg, rgba(22, 64, 51, 0.95), rgba(11, 25, 27, 0.95)),
+    rgba(91, 58, 41, 0.74);
   box-shadow:
-    0 0 0 3px rgba(199, 154, 43, 0.13),
-    0 18px 42px rgba(199, 154, 43, 0.22);
+    0 0 0 3px rgba(116, 240, 167, 0.13),
+    0 18px 42px rgba(116, 240, 167, 0.22);
 }
 
 .map-node.is-error {
@@ -1323,9 +1439,9 @@ h1 {
   font-size: 0.92rem;
 }
 
-@keyframes edge-pulse {
-  50% {
-    stroke-width: 1.45;
+@keyframes wire-flow {
+  to {
+    stroke-dashoffset: -21;
   }
 }
 
@@ -1504,7 +1620,7 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .upload-target,
   .workflow-actions button,
-  .map-edge.is-active line {
+  .map-edge.is-active path {
     transition: none;
     animation: none;
   }
