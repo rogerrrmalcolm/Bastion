@@ -119,6 +119,13 @@ Fill coordination_notes with specific handoffs:
   appetite, or regulatory/sector context
 - memo_agent: the highest-conviction risk conclusion and go/no-go recommendation
 
+Output density rules:
+- lead with severity, likelihood, source signal, and transaction consequence
+- keep narrative fields to one or two short sentences
+- list only the top 3-5 material risks, mitigations, workstreams, and gaps
+- prefer specific protections such as escrow, indemnity, covenant, earnout,
+  holdback, closing condition, or retention plan over broad mitigation language
+
 Structured buyer-target M&A context:
 {company_text}
 

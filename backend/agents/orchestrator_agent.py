@@ -245,6 +245,7 @@ Planning standard:
 - require deal-specific output tied to valuation, buyer appetite, financing, diligence scope, closing certainty, or purchase agreement terms
 - do not allow unsupported market facts, metrics, valuation multiples, risks, dates, or citations to pass through as facts
 - surface missing information as diligence requests instead of asking agents to guess
+- keep objectives and tool purposes short, specific, and data-driven
 
 Structured buyer-target M&A context:
 {company_text}

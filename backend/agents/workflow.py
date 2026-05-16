@@ -13,8 +13,10 @@ from backend.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
     FinancialAnalysis,
+    InvestmentMemo,
     MarketAnalysis,
     OrchestrationPlan,
+    ReportPackage,
     RiskAnalysis,
 )
 
@@ -87,10 +89,14 @@ Explicit user questions:
     return request.company_text or ""
 
 
-def _stringify_output(output: object) -> str:
+def _stringify_output(output: object, max_chars: int = 10000) -> str:
     if hasattr(output, "model_dump_json"):
-        return output.model_dump_json(indent=2)
-    return str(output)
+        text = output.model_dump_json(indent=2)
+    else:
+        text = str(output)
+    if len(text) > max_chars:
+        return f"{text[:max_chars].rstrip()}... [truncated]"
+    return text
 
 
 def _step_for_agent(plan: OrchestrationPlan, agent_name: str) -> AgentExecutionStep:
@@ -109,16 +115,31 @@ def _agent_context(
         f"{agent} output:\n{_stringify_output(output)}"
         for agent, output in prior_outputs.items()
     )
+    prior_block = (
+        f"\nCompleted prior agent outputs:\n{prior_context}"
+        if prior_context
+        else ""
+    )
     return f"""
 Company context:
 {company_text}
 
 CFO orchestration instruction:
 {step.model_dump_json(indent=2)}
-
-Completed prior agent outputs:
-{prior_context or "None yet."}
+{prior_block}
 """
+
+
+def _workflow_memory_summary(memo: InvestmentMemo, report: ReportPackage) -> str:
+    limitations = "; ".join(report.source_limitations[:3]) or "None noted"
+    open_questions = "; ".join(memo.open_questions[:3]) or "None"
+    return (
+        f"Recommendation: {memo.recommendation}. "
+        f"Summary: {memo.executive_summary} "
+        f"Confidence: {memo.overall_confidence}. "
+        f"Source limitations: {limitations}. "
+        f"Open questions: {open_questions}."
+    )
 
 
 def run_planned_specialist_agents(
@@ -172,11 +193,7 @@ Current structured M&A deal context:
                 company_text=_agent_context(
                     company_text_with_memory,
                     memo_step,
-                    {
-                        "market_agent": market_analysis,
-                        "financial_agent": financial_analysis,
-                        "risk_agent": risk_analysis,
-                    },
+                    {},
                 ),
                 market_analysis=market_analysis,
                 financial_analysis=financial_analysis,
@@ -196,7 +213,7 @@ Current structured M&A deal context:
     memory_store.add_message(
         session.session_id,
         "assistant",
-        report.model_dump_json(indent=2),
+        _workflow_memory_summary(investment_memo, report),
     )
 
     return AnalyzeResponse(

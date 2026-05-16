@@ -10,8 +10,17 @@ import httpx
 from pydantic import BaseModel
 
 DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_TEMPERATURE = 0.15
 MAX_RETRY_ATTEMPTS = 5
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+DEFAULT_SYSTEM_INSTRUCTION = """
+You are Bastion, an M&A diligence assistant. Be concise, data-first, and
+evidence-disciplined. Prioritize numbers, periods, source labels, citations,
+deal impact, and missing data over broad narrative. Do not invent financials,
+market facts, sources, dates, risks, or valuation conclusions. If evidence is
+missing, say exactly what is missing and why it matters. Keep prose fields short
+and decision-oriented; use lists only for the most material items.
+"""
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -42,12 +51,19 @@ def _generate_content(
     contents: str,
     config: dict[str, object] | None = None,
 ):
+    generation_config: dict[str, object] = {
+        "system_instruction": DEFAULT_SYSTEM_INSTRUCTION,
+    }
+    if not model.startswith("gemini-3"):
+        generation_config["temperature"] = DEFAULT_TEMPERATURE
+    if config is not None:
+        generation_config.update(config)
+
     request = {
         "model": model,
         "contents": contents,
+        "config": generation_config,
     }
-    if config is not None:
-        request["config"] = config
 
     return _with_gemini_retries(lambda: client.models.generate_content(**request))
 

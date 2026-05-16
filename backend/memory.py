@@ -49,7 +49,13 @@ class InMemorySessionStore:
             session.updated_at = datetime.now(timezone.utc)
             return message
 
-    def get_recent_context(self, session_id: str, limit: int = 10) -> str:
+    def get_recent_context(
+        self,
+        session_id: str,
+        limit: int = 6,
+        max_message_chars: int = 1200,
+        max_total_chars: int = 6000,
+    ) -> str:
         with self._lock:
             session = self._sessions[session_id]
             messages = session.messages[-limit:]
@@ -57,9 +63,19 @@ class InMemorySessionStore:
         if not messages:
             return "No previous conversation in this session."
 
-        return "\n".join(
-            f"{message.role.upper()}: {message.content}" for message in messages
-        )
+        entries: list[str] = []
+        total_chars = 0
+        for message in reversed(messages):
+            content = " ".join(message.content.split())
+            if len(content) > max_message_chars:
+                content = f"{content[:max_message_chars].rstrip()}... [truncated]"
+            entry = f"{message.role.upper()}: {content}"
+            if entries and total_chars + len(entry) > max_total_chars:
+                break
+            entries.append(entry)
+            total_chars += len(entry)
+
+        return "\n".join(reversed(entries))
 
     def list_messages(self, session_id: str) -> list[MemoryMessage]:
         with self._lock:

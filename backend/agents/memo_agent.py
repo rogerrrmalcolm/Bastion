@@ -90,6 +90,13 @@ Fill the memo-specific fields:
 - investment_committee_conditions: conditions before LOI, signing, or closing
 - source_limitations: missing information and unsupported assumptions
 
+Output density rules:
+- lead with recommendation, confidence, source-backed data points, and gating gaps
+- keep narrative fields to one or two short sentences
+- limit key_data_points to the most decision-relevant facts from the specialist agents
+- make every next_diligence_steps item a concrete workstream, required material,
+  or decision it unlocks
+
 Return structured JSON only. Do not include to/from/date headers, invent dates,
 or make personalized investment advice claims.
 

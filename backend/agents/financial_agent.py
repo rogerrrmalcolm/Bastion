@@ -124,6 +124,13 @@ liquidity, capital needs, operating performance, or the investment thesis.
 Mark weakly supported or irrelevant metrics as missing instead of forcing them
 into the output.
 
+Output density rules:
+- lead with reported or calculated metrics, period, citation, and deal impact
+- keep narrative fields to one or two short sentences
+- list only the top 3-5 material metrics, findings, concerns, and data gaps
+- do not restate generic diligence language when a specific data request is
+  more useful
+
 Return a complete structured JSON object matching the requested schema. Use
 short, decision-focused language. Every metric or finding that relies on a
 source should include a citation. If no document name is available, cite

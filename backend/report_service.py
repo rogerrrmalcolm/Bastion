@@ -3,13 +3,16 @@ from backend.schemas import (
     AgentName,
     FinancialAnalysis,
     FinancialCitation,
+    FinancialMetric,
     InvestmentMemo,
+    MemoDataPoint,
     MarketAnalysis,
     OrchestrationPlan,
     ReportCitation,
     ReportPackage,
     ReportSection,
     RiskAnalysis,
+    RiskItem,
 )
 
 
@@ -37,6 +40,23 @@ def _clean_list(values: list[object], limit: int = 6) -> list[str]:
         if len(cleaned) >= limit:
             break
     return cleaned
+
+
+def _metric_bullet(metric: FinancialMetric) -> str:
+    period = f" ({metric.period})" if metric.period else ""
+    comparison = f"; {metric.comparison}" if metric.comparison else ""
+    return f"{metric.name}{period}: {metric.value}{comparison} - {metric.interpretation}"
+
+
+def _data_point_bullet(point: MemoDataPoint) -> str:
+    return f"{point.label}: {point.value}"
+
+
+def _risk_bullet(item: RiskItem) -> str:
+    return (
+        f"{item.title}: {item.severity} severity / {item.likelihood} likelihood - "
+        f"{item.deal_impact}"
+    )
 
 
 def _agent_output_citation(agent_name: AgentName, relevance: str) -> ReportCitation:
@@ -260,7 +280,7 @@ def _market_contribution(market: MarketAnalysis) -> AgentContribution:
             *[finding.title for finding in market.competitive_risks],
             *[factor.factor for factor in market.key_market_factors],
         ],
-        limit=7,
+        limit=5,
     )
     provides = _clean_list(
         [
@@ -269,7 +289,7 @@ def _market_contribution(market: MarketAnalysis) -> AgentContribution:
             market.capital_markets_read_through,
             market.pricing_and_margin_pressure,
         ],
-        limit=5,
+        limit=4,
     )
     return AgentContribution(
         agent_name="market_agent",
@@ -293,7 +313,7 @@ def _financial_contribution(financial: FinancialAnalysis) -> AgentContribution:
             *[finding.title for finding in financial.financial_concerns],
             *[finding.title for finding in financial.red_flags],
         ],
-        limit=7,
+        limit=5,
     )
     provides = _clean_list(
         [
@@ -302,7 +322,7 @@ def _financial_contribution(financial: FinancialAnalysis) -> AgentContribution:
             financial.financing_and_debt_capacity_view,
             *financial.valuation_and_deal_structure_implications,
         ],
-        limit=6,
+        limit=4,
     )
     return AgentContribution(
         agent_name="financial_agent",
@@ -325,7 +345,7 @@ def _risk_contribution(risk: RiskAnalysis) -> AgentContribution:
             *[item.title for item in risk.deal_breaker_risks],
             *[factor.finding for factor in risk.acquisition_risk_factors],
         ],
-        limit=7,
+        limit=5,
     )
     provides = _clean_list(
         [
@@ -335,7 +355,7 @@ def _risk_contribution(risk: RiskAnalysis) -> AgentContribution:
             *risk.valuation_and_terms_implications,
             *risk.purchase_agreement_implications,
         ],
-        limit=6,
+        limit=4,
     )
     return AgentContribution(
         agent_name="risk_agent",
@@ -356,7 +376,7 @@ def _memo_contribution(memo: InvestmentMemo) -> AgentContribution:
             memo.valuation_and_structure_view,
             *memo.investment_committee_conditions,
         ],
-        limit=6,
+        limit=4,
     )
     key_findings = _clean_list(
         [
@@ -366,7 +386,7 @@ def _memo_contribution(memo: InvestmentMemo) -> AgentContribution:
             memo.financial_view,
             memo.risk_view,
         ],
-        limit=6,
+        limit=5,
     )
     return AgentContribution(
         agent_name="memo_agent",
@@ -413,12 +433,12 @@ def build_report_package(
             summary=memo.executive_summary,
             bullets=_clean_list(
                 [
+                    *[_data_point_bullet(point) for point in memo.key_data_points[:3]],
                     memo.recommendation_rationale,
                     memo.decision_framework,
-                    memo.buyer_target_fit_view,
-                    f"Workflow rationale: {plan.cfo_rationale}" if plan.cfo_rationale else "",
+                    memo.valuation_and_structure_view,
                 ],
-                limit=4,
+                limit=5,
             ),
             source_agents=["memo_agent", "market_agent", "financial_agent", "risk_agent"],
             citations=_section_citations(
@@ -431,8 +451,8 @@ def build_report_package(
             summary=memo.market_view or market.executive_summary,
             bullets=_clean_list(
                 [
+                    *[factor.current_signal for factor in market.key_market_factors[:3]],
                     market.investment_thesis_contribution,
-                    market.market_position,
                     market.m_and_a_implications,
                     market.capital_markets_read_through,
                 ],
@@ -446,6 +466,7 @@ def build_report_package(
             summary=memo.financial_view or financial.executive_summary,
             bullets=_clean_list(
                 [
+                    *[_metric_bullet(metric) for metric in financial.key_metrics[:4]],
                     financial.m_and_a_financial_assessment,
                     financial.valuation_view,
                     financial.financing_and_debt_capacity_view,
@@ -461,12 +482,12 @@ def build_report_package(
             summary=memo.risk_view or risk.executive_summary,
             bullets=_clean_list(
                 [
+                    *[_risk_bullet(item) for item in risk.top_risks[:3]],
                     risk.acquisition_risk_summary,
-                    risk.integration_risk_view,
                     *risk.diligence_priorities,
                     *memo.investment_committee_conditions,
                 ],
-                limit=7,
+                limit=6,
             ),
             source_agents=["risk_agent", "memo_agent"],
             citations=_section_citations(contributions, {"risk_agent", "memo_agent"}),
@@ -482,7 +503,7 @@ def build_report_package(
                     *risk.missing_information,
                     *market.missing_information,
                 ],
-                limit=8,
+                limit=6,
             ),
             source_agents=["memo_agent", "financial_agent", "risk_agent", "market_agent"],
             citations=_section_citations(
@@ -493,7 +514,8 @@ def build_report_package(
     ]
 
     source_register = _dedupe_citations(
-        [citation for contribution in contributions for citation in contribution.citations]
+        [citation for contribution in contributions for citation in contribution.citations],
+        limit=18,
     )
 
     return ReportPackage(
@@ -510,6 +532,6 @@ def build_report_package(
                 *financial.missing_information,
                 *risk.missing_information,
             ],
-            limit=10,
+            limit=6,
         ),
     )

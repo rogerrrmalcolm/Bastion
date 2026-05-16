@@ -113,6 +113,13 @@ Fill coordination_notes with specific handoffs for other agents:
 - risk_agent: market risks requiring diligence or mitigation
 - memo_agent: the highest-conviction market points for final synthesis
 
+Output density rules:
+- lead with quantified facts, dates, periods, and cited signals when available
+- keep narrative fields to one or two short sentences
+- list only the top 3-5 material trends, factors, sources, and missing items
+- avoid generic market commentary unless it changes valuation, timing, buyer
+  universe, financing, diligence scope, or purchase agreement terms
+
 Return clear structured JSON only. Keep every field concise and suitable for a
 third-party investment committee reader.
 

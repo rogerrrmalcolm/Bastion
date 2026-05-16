@@ -232,38 +232,47 @@ class FinancialAnalysis(BaseModel):
     )
     purchase_price_adjustment_items: list[str] = Field(
         default_factory=list,
+        max_length=4,
         description="Potential net debt, working capital, cash, debt-like item, or QoE adjustments.",
     )
     valuation_and_deal_structure_implications: list[str] = Field(
         default_factory=list,
+        max_length=4,
         description="Implications for price, multiple, earnout, seller note, rollover, or escrow.",
     )
     key_metrics: list[FinancialMetric] = Field(
         default_factory=list,
+        max_length=5,
         description="Material reported or calculated financial metrics.",
     )
     financial_strengths: list[FinancialFinding] = Field(
         default_factory=list,
+        max_length=3,
         description="Financial attributes that support the deal thesis.",
     )
     financial_concerns: list[FinancialFinding] = Field(
         default_factory=list,
+        max_length=3,
         description="Financial weaknesses, diligence concerns, or pressure points.",
     )
     red_flags: list[FinancialFinding] = Field(
         default_factory=list,
+        max_length=3,
         description="High-priority financial issues that may affect valuation or execution.",
     )
     missing_information: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="Financial documents or data needed before making firmer conclusions.",
     )
     diligence_questions: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="Specific follow-up questions for the company or deal team.",
     )
     coordination_notes: list[str] = Field(
         default_factory=list,
+        max_length=4,
         description="Specific handoffs for market, risk, and memo agents.",
     )
     overall_confidence: Literal["low", "medium", "high"] = Field(
@@ -393,19 +402,21 @@ class MarketAnalysis(BaseModel):
     market_position: str = Field(description="Assessment of competitive position.")
     trend_assessment: list[MarketTrend] = Field(
         default_factory=list,
+        max_length=4,
         description="Core market trends and structural shifts affecting the thesis.",
     )
     key_market_factors: list[MarketFactor] = Field(
         default_factory=list,
+        max_length=5,
         description=(
             "Multi-factor market assessment across macro, regulatory, technology, "
             "competition, pricing, capital markets, and M&A."
         ),
     )
-    growth_drivers: list[MarketFinding] = Field(default_factory=list)
-    competitive_risks: list[MarketFinding] = Field(default_factory=list)
-    demand_risks: list[MarketFinding] = Field(default_factory=list)
-    key_competitors: list[str] = Field(default_factory=list)
+    growth_drivers: list[MarketFinding] = Field(default_factory=list, max_length=3)
+    competitive_risks: list[MarketFinding] = Field(default_factory=list, max_length=3)
+    demand_risks: list[MarketFinding] = Field(default_factory=list, max_length=3)
+    key_competitors: list[str] = Field(default_factory=list, max_length=5)
     pricing_and_margin_pressure: str = Field(
         default="",
         description="Read-through on pricing power, input costs, and margin pressure.",
@@ -420,14 +431,17 @@ class MarketAnalysis(BaseModel):
     )
     scenario_analysis: list[MarketScenario] = Field(
         default_factory=list,
+        max_length=3,
         description="Base, upside, and downside market scenarios when evidence supports them.",
     )
     monitoring_signposts: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="Market indicators the deal team should monitor.",
     )
     research_sources: list[MarketResearchSource] = Field(
         default_factory=list,
+        max_length=5,
         description=(
             "Live market data, current news/search sources, and company-context "
             "references that informed the market analysis."
@@ -435,6 +449,7 @@ class MarketAnalysis(BaseModel):
     )
     coordination_notes: list[str] = Field(
         default_factory=list,
+        max_length=4,
         description=(
             "Specific handoffs or questions for financial, risk, and memo agents."
         ),
@@ -442,7 +457,7 @@ class MarketAnalysis(BaseModel):
     investment_thesis_contribution: str = Field(
         description="How the market view supports or weakens the investment thesis."
     )
-    missing_information: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list, max_length=5)
     overall_confidence: Literal["low", "medium", "high"]
 
 
@@ -602,35 +617,42 @@ class RiskAnalysis(BaseModel):
         default="medium",
         description="Overall acquisition risk score before mitigation.",
     )
-    top_risks: list[RiskItem] = Field(default_factory=list)
-    red_flags: list[RiskItem] = Field(default_factory=list)
+    top_risks: list[RiskItem] = Field(default_factory=list, max_length=5)
+    red_flags: list[RiskItem] = Field(default_factory=list, max_length=3)
     deal_breaker_risks: list[RiskItem] = Field(
         default_factory=list,
+        max_length=3,
         description="Risks that could justify pausing, repricing, or abandoning the deal.",
     )
     acquisition_risk_factors: list[AcquisitionRiskFactor] = Field(
         default_factory=list,
+        max_length=5,
         description="Detailed acquisition risk matrix for the deal team.",
     )
-    diligence_priorities: list[str] = Field(default_factory=list)
+    diligence_priorities: list[str] = Field(default_factory=list, max_length=5)
     diligence_workplan: list[DiligenceWorkstream] = Field(
         default_factory=list,
+        max_length=5,
         description="Priority diligence workstreams and required materials.",
     )
     mitigation_plan: list[RiskMitigationAction] = Field(
         default_factory=list,
+        max_length=5,
         description="Deal protections and mitigations to pursue.",
     )
     risk_scenarios: list[AcquisitionRiskScenario] = Field(
         default_factory=list,
+        max_length=3,
         description="Base/downside risk scenarios for acquisition planning.",
     )
     purchase_agreement_implications: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="Expected impacts on reps, warranties, covenants, indemnity, escrow, or closing conditions.",
     )
     valuation_and_terms_implications: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="How risk should affect price, structure, earnout, escrow, or financing terms.",
     )
     integration_risk_view: str = Field(
@@ -651,13 +673,15 @@ class RiskAnalysis(BaseModel):
     )
     risk_sources: list[RiskResearchSource] = Field(
         default_factory=list,
+        max_length=5,
         description="Risk sources used from company context and live news/search tools.",
     )
     coordination_notes: list[str] = Field(
         default_factory=list,
+        max_length=4,
         description="Handoffs for financial, market, and memo agents.",
     )
-    missing_information: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list, max_length=5)
     overall_risk_rating: Literal["low", "medium", "high"]
     overall_confidence: Literal["low", "medium", "high"]
 
@@ -789,21 +813,24 @@ class InvestmentMemo(BaseModel):
     )
     question_answers: list[MemoQuestionAnswer] = Field(
         default_factory=list,
+        max_length=5,
         description=(
             "Direct answers to explicit user questions from the original prompt, "
             "kept separate from the deal team's open diligence questions."
         ),
     )
-    key_data_points: list[MemoDataPoint] = Field(default_factory=list)
-    key_risks: list[str] = Field(default_factory=list)
+    key_data_points: list[MemoDataPoint] = Field(default_factory=list, max_length=6)
+    key_risks: list[str] = Field(default_factory=list, max_length=5)
     investment_committee_conditions: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="Conditions that should be satisfied before proceed or signing.",
     )
-    next_diligence_steps: list[str] = Field(default_factory=list)
-    open_questions: list[str] = Field(default_factory=list)
+    next_diligence_steps: list[str] = Field(default_factory=list, max_length=5)
+    open_questions: list[str] = Field(default_factory=list, max_length=5)
     source_limitations: list[str] = Field(
         default_factory=list,
+        max_length=5,
         description="Important evidence gaps, unsupported inferences, and source limitations.",
     )
     overall_confidence: Literal["low", "medium", "high"]

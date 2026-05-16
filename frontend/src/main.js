@@ -256,6 +256,7 @@ const farLimit = -tunnelLength
 const introDuration = 2.85
 const workspaceTransitionDuration = 2.15
 const WORKFLOW_TIMEOUT_MS = 420000
+const API_BASE_URL = 'http://127.0.0.1:8000'
 const DASHBOARD_STORAGE_KEY = 'bastion-dashboard-analyses'
 const confidenceScores = {
   low: 34,
@@ -1074,6 +1075,39 @@ targetFileInput.addEventListener('change', () => {
   targetFileSummary.textContent = formatFileSummary(files, 'No target PDFs selected')
 })
 
+async function uploadPdfFiles(files, side, signal) {
+  const uploads = []
+  for (const file of files) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('side', side)
+
+    const response = await fetch(`${API_BASE_URL}/documents/upload`, {
+      method: 'POST',
+      body: formData,
+      signal,
+    })
+
+    if (!response.ok) {
+      const detail = await response.text()
+      throw new Error(`S3 upload failed for ${file.name}: ${detail}`)
+    }
+
+    uploads.push(await response.json())
+  }
+  return uploads
+}
+
+function formatUploadedPdfContext(label, uploads) {
+  if (!uploads.length) {
+    return ''
+  }
+
+  return `\n\n${label} PDFs stored in S3:\n${uploads
+    .map((upload) => `- ${upload.filename}: ${upload.uri}`)
+    .join('\n')}`
+}
+
 function openWorkspace(view = 'analysis') {
   if (workspaceTransition.isActive) {
     return
@@ -1713,19 +1747,11 @@ form.addEventListener('submit', async (event) => {
 
   const buyerFiles = Array.from(buyerFileInput.files ?? [])
   const targetFiles = Array.from(targetFileInput.files ?? [])
-  const buyerFileContext = buyerFiles.length
-    ? `\n\nBuyer PDF filenames for reference:\n${buyerFiles.map((file) => `- ${file.name}`).join('\n')}`
-    : ''
-  const targetFileContext = targetFiles.length
-    ? `\n\nTarget PDF filenames for reference:\n${targetFiles.map((file) => `- ${file.name}`).join('\n')}`
-    : ''
-  const buyerContext = `${buyerInput.value.trim()}${buyerFileContext}`.trim()
-  const targetContext = `${targetInput.value.trim()}${targetFileContext}`.trim()
   const dealContext = promptInput.value.trim()
   const questions = parseDealQuestions(promptInput.value.trim())
   const hasFiles = buyerFiles.length > 0 || targetFiles.length > 0
 
-  workflowStatus.textContent = 'Routing'
+  workflowStatus.textContent = hasFiles ? 'Uploading PDFs' : 'Routing'
   workflowResult.textContent = ''
   workflowDock.classList.remove('has-result')
   form.classList.add('is-running')
@@ -1737,7 +1763,15 @@ form.addEventListener('submit', async (event) => {
   }, WORKFLOW_TIMEOUT_MS)
 
   try {
-    const response = await fetch('http://127.0.0.1:8000/analyze', {
+    const [buyerUploads, targetUploads] = await Promise.all([
+      uploadPdfFiles(buyerFiles, 'buyer', controller.signal),
+      uploadPdfFiles(targetFiles, 'target', controller.signal),
+    ])
+    const buyerContext = `${buyerInput.value.trim()}${formatUploadedPdfContext('Buyer', buyerUploads)}`.trim()
+    const targetContext = `${targetInput.value.trim()}${formatUploadedPdfContext('Target', targetUploads)}`.trim()
+
+    workflowStatus.textContent = 'Routing'
+    const response = await fetch(`${API_BASE_URL}/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
