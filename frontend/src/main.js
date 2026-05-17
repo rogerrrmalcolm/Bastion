@@ -1089,7 +1089,12 @@ async function uploadPdfFiles(files, side, signal) {
     })
 
     if (!response.ok) {
-      const detail = await response.text()
+      let detail = await response.text()
+      try {
+        detail = JSON.parse(detail)?.detail ?? detail
+      } catch {
+        // Keep the raw response text when the backend did not return JSON.
+      }
       throw new Error(`S3 upload failed for ${file.name}: ${detail}`)
     }
 
@@ -1795,12 +1800,16 @@ form.addEventListener('submit', async (event) => {
     completeWorkflowLoader()
   } catch (error) {
     const didTimeout = error?.name === 'AbortError'
-    workflowStatus.textContent = didTimeout ? 'Timed out' : 'Backend unavailable'
+    const message = error?.message ?? ''
+    const isUploadError = message.startsWith('S3 upload failed')
+    workflowStatus.textContent = didTimeout ? 'Timed out' : isUploadError ? 'Upload failed' : 'Backend unavailable'
     renderWorkflowError(
-      didTimeout ? 'Workflow timed out' : 'Backend unavailable',
+      didTimeout ? 'Workflow timed out' : isUploadError ? 'S3 upload failed' : 'Backend unavailable',
       didTimeout
         ? 'The agent route completed, but the backend did not return before the timeout. Try a shorter prompt or run the backend logs to inspect the Gemini call.'
-        : 'Start the FastAPI backend on port 8000, then run the workflow again.',
+        : isUploadError
+          ? message
+          : 'Start the FastAPI backend on port 8000, then run the workflow again.',
     )
     failWorkflowLoader(
       didTimeout
