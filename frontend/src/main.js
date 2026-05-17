@@ -1790,7 +1790,13 @@ form.addEventListener('submit', async (event) => {
     })
 
     if (!response.ok) {
-      throw new Error(`Workflow returned ${response.status}`)
+      let detail = await response.text()
+      try {
+        detail = JSON.parse(detail)?.detail ?? detail
+      } catch {
+        // Keep the raw response text when the backend did not return JSON.
+      }
+      throw new Error(`Workflow returned ${response.status}: ${detail}`)
     }
 
     const data = await response.json()
@@ -1802,14 +1808,29 @@ form.addEventListener('submit', async (event) => {
     const didTimeout = error?.name === 'AbortError'
     const message = error?.message ?? ''
     const isUploadError = message.startsWith('S3 upload failed')
-    workflowStatus.textContent = didTimeout ? 'Timed out' : isUploadError ? 'Upload failed' : 'Backend unavailable'
+    const isWorkflowError = message.startsWith('Workflow returned')
+    workflowStatus.textContent = didTimeout
+      ? 'Timed out'
+      : isUploadError
+        ? 'Upload failed'
+        : isWorkflowError
+          ? 'Workflow failed'
+          : 'Backend unavailable'
     renderWorkflowError(
-      didTimeout ? 'Workflow timed out' : isUploadError ? 'S3 upload failed' : 'Backend unavailable',
+      didTimeout
+        ? 'Workflow timed out'
+        : isUploadError
+          ? 'S3 upload failed'
+          : isWorkflowError
+            ? 'Workflow failed'
+            : 'Backend unavailable',
       didTimeout
         ? 'The agent route completed, but the backend did not return before the timeout. Try a shorter prompt or run the backend logs to inspect the Gemini call.'
         : isUploadError
           ? message
-          : 'Start the FastAPI backend on port 8000, then run the workflow again.',
+          : isWorkflowError
+            ? message
+            : 'Start the FastAPI backend on port 8000, then run the workflow again.',
     )
     failWorkflowLoader(
       didTimeout
