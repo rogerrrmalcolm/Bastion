@@ -256,7 +256,7 @@ const farLimit = -tunnelLength
 const introDuration = 2.85
 const workspaceTransitionDuration = 2.15
 const WORKFLOW_TIMEOUT_MS = 420000
-const API_BASE_URL = 'http://127.0.0.1:8000'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
 const DASHBOARD_STORAGE_KEY = 'bastion-dashboard-analyses'
 const confidenceScores = {
   low: 34,

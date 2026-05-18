@@ -28,13 +28,25 @@ from backend.schemas import (
 
 app = FastAPI(title="Bastion AI Investment Banking Backend")
 S3_PREFIX = os.getenv("S3_PREFIX", "pdfs").strip("/")
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+
+def _cors_origins() -> list[str]:
+    configured_origins = os.getenv("CORS_ORIGINS") or os.getenv("FRONTEND_URL")
+    if not configured_origins:
+        return DEFAULT_CORS_ORIGINS
+    return [
+        origin.strip().rstrip("/")
+        for origin in configured_origins.split(",")
+        if origin.strip()
+    ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
