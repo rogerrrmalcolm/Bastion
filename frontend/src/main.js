@@ -174,9 +174,9 @@ app.innerHTML = `
     <section id="workflow-loader" class="workflow-loader" aria-live="polite" aria-hidden="true">
       <div class="loader-panel">
         <div class="loader-header">
-          <p class="eyebrow">Agent Routing</p>
-          <h2>Dijkstra workflow traversal</h2>
-          <p id="loader-caption">Calculating shortest path through Bastion agents.</p>
+          <p class="eyebrow">Workflow</p>
+          <h2>Bastion workflow</h2>
+          <p id="loader-caption">Running Bastion workflow.</p>
         </div>
         <div id="workflow-map" class="workflow-map" aria-hidden="true"></div>
         <div class="loader-status-grid">
@@ -185,7 +185,7 @@ app.innerHTML = `
             <strong id="current-agent">Buyer intake</strong>
           </div>
           <div>
-            <span>Route cost</span>
+            <span>Workflow step</span>
             <strong id="route-cost">0</strong>
           </div>
           <div>
@@ -230,7 +230,7 @@ const workflowLoader = document.querySelector('#workflow-loader')
 const workflowMap = document.querySelector('#workflow-map')
 const loaderCaption = document.querySelector('#loader-caption')
 const currentAgent = document.querySelector('#current-agent')
-const routeCost = document.querySelector('#route-cost')
+const workflowStep = document.querySelector('#route-cost')
 const responseMode = document.querySelector('#response-mode')
 
 const scene = new THREE.Scene()
@@ -322,7 +322,7 @@ const agentGraph = {
 
 const agentPathState = {
   route: [],
-  distances: {},
+  steps: {},
   visitOrder: [],
   startedAt: 0,
   frame: null,
@@ -366,9 +366,9 @@ function wirePath(fromNode, toNode, index) {
   return `M ${fromNode.x} ${fromNode.y} L ${fromNode.x} ${bendY} L ${toNode.x} ${bendY} L ${toNode.x} ${toNode.y}`
 }
 
-function computeDijkstraRoute(graph, startId, endId) {
+function computeWorkflowRoute(graph, startId, endId) {
   const nodeIds = graph.nodes.map((node) => node.id)
-  const distances = Object.fromEntries(nodeIds.map((id) => [id, Number.POSITIVE_INFINITY]))
+  const steps = Object.fromEntries(nodeIds.map((id) => [id, Number.POSITIVE_INFINITY]))
   const previous = {}
   const visited = []
   const unsettled = new Set(nodeIds)
@@ -379,11 +379,11 @@ function computeDijkstraRoute(graph, startId, endId) {
     adjacency[to].push({ id: from, weight })
   })
 
-  distances[startId] = 0
+  steps[startId] = 0
 
   while (unsettled.size > 0) {
-    const current = [...unsettled].sort((a, b) => distances[a] - distances[b])[0]
-    if (!current || distances[current] === Number.POSITIVE_INFINITY) {
+    const current = [...unsettled].sort((a, b) => steps[a] - steps[b])[0]
+    if (!current || steps[current] === Number.POSITIVE_INFINITY) {
       break
     }
 
@@ -399,9 +399,9 @@ function computeDijkstraRoute(graph, startId, endId) {
         return
       }
 
-      const nextDistance = distances[current] + neighbor.weight
-      if (nextDistance < distances[neighbor.id]) {
-        distances[neighbor.id] = nextDistance
+      const nextStep = steps[current] + neighbor.weight
+      if (nextStep < steps[neighbor.id]) {
+        steps[neighbor.id] = nextStep
         previous[neighbor.id] = current
       }
     })
@@ -415,17 +415,17 @@ function computeDijkstraRoute(graph, startId, endId) {
   }
 
   return {
-    distances,
+    steps,
     route: route[0] === startId ? route : [startId],
     visitOrder: visited,
   }
 }
 
 function renderWorkflowMap() {
-  const dijkstra = computeDijkstraRoute(agentGraph, agentGraph.centralNodeId, 'output')
-  agentPathState.route = dijkstra.visitOrder.length > 0 ? dijkstra.visitOrder : dijkstra.route
-  agentPathState.distances = dijkstra.distances
-  agentPathState.visitOrder = dijkstra.visitOrder
+  const workflowRoute = computeWorkflowRoute(agentGraph, agentGraph.centralNodeId, 'output')
+  agentPathState.route = workflowRoute.visitOrder.length > 0 ? workflowRoute.visitOrder : workflowRoute.route
+  agentPathState.steps = workflowRoute.steps
+  agentPathState.visitOrder = workflowRoute.visitOrder
 
   const lines = agentGraph.edges.map(([from, to, weight], index) => {
     const fromNode = agentGraph.nodes.find((node) => node.id === from)
@@ -434,7 +434,7 @@ function renderWorkflowMap() {
       <g class="map-edge" data-edge="${edgeId(from, to)}">
         <path d="${wirePath(fromNode, toNode, index)}" pathLength="100" vector-effect="non-scaling-stroke" />
         <circle class="wire-contact" cx="${toNode.x}" cy="${toNode.y}" r="0.72" />
-        <text x="${fromNode.x + (toNode.x - fromNode.x) * 0.56}" y="${fromNode.y + (toNode.y - fromNode.y) * 0.56}">d${weight}</text>
+        <text x="${fromNode.x + (toNode.x - fromNode.x) * 0.56}" y="${fromNode.y + (toNode.y - fromNode.y) * 0.56}">${weight}</text>
       </g>
     `
   }).join('')
@@ -451,7 +451,7 @@ function renderWorkflowMap() {
       <i aria-hidden="true">${node.badge ?? node.label.slice(0, 2).toUpperCase()}</i>
       <strong>${node.label}</strong>
       <span>${node.role}</span>
-      <small data-distance="${node.id}">cost inf</small>
+      <small data-step="${node.id}">queued</small>
     </div>
   `
   }).join('')
@@ -479,12 +479,12 @@ function setLoaderStep(stepIndex, isComplete = false) {
     nodeElement.classList.toggle('is-complete', nodeId === 'output' && isComplete)
   })
 
-  workflowMap.querySelectorAll('[data-distance]').forEach((distanceElement) => {
-    const nodeId = distanceElement.dataset.distance
-    const distance = agentPathState.distances[nodeId]
-    distanceElement.textContent = Number.isFinite(distance) && reached.has(nodeId)
-      ? `cost ${distance}`
-      : 'cost inf'
+  workflowMap.querySelectorAll('[data-step]').forEach((stepElement) => {
+    const nodeId = stepElement.dataset.step
+    const step = agentPathState.steps[nodeId]
+    stepElement.textContent = Number.isFinite(step) && reached.has(nodeId)
+      ? `step ${step}`
+      : 'queued'
   })
 
   const activeWireTarget = activeId === centralNodeId ? route[boundedIndex + 1] : activeId
@@ -502,9 +502,9 @@ function setLoaderStep(stepIndex, isComplete = false) {
   })
 
   currentAgent.textContent = activeNode?.label ?? 'Routing'
-  routeCost.textContent = Number.isFinite(agentPathState.distances[activeId])
-    ? String(agentPathState.distances[activeId])
-    : 'inf'
+  workflowStep.textContent = Number.isFinite(agentPathState.steps[activeId])
+    ? String(agentPathState.steps[activeId])
+    : '--'
 }
 
 function startWorkflowLoader(mode) {
@@ -514,7 +514,7 @@ function startWorkflowLoader(mode) {
   agentPathState.isRunning = true
   agentPathState.isAwaitingResponse = false
   responseMode.textContent = mode
-  loaderCaption.textContent = 'Bastion is energizing the agent circuit around the deal.'
+  loaderCaption.textContent = 'Bastion is running the workflow across the deal inputs.'
   workflowLoader.setAttribute('aria-hidden', 'false')
   shell.classList.add('is-processing')
   shell.classList.add('is-comparing')
@@ -537,7 +537,7 @@ function startWorkflowLoader(mode) {
     if (routeIndex === lastWorkingIndex && !agentPathState.isAwaitingResponse) {
       agentPathState.isAwaitingResponse = true
       workflowStatus.textContent = 'Finalizing'
-      loaderCaption.textContent = 'Agent circuit lit. Waiting for Bastion to produce the answer.'
+      loaderCaption.textContent = 'Workflow is finalizing the Bastion response.'
     }
 
     agentPathState.frame = requestAnimationFrame(tick)
@@ -558,7 +558,7 @@ function stopWorkflowLoader() {
 
 function completeWorkflowLoader() {
   stopWorkflowLoader()
-  loaderCaption.textContent = 'Bastion circuit complete. Rendering response.'
+  loaderCaption.textContent = 'Workflow complete. Rendering response.'
   setLoaderStep(agentPathState.route.length - 1, true)
 
   window.setTimeout(() => {
@@ -567,7 +567,7 @@ function completeWorkflowLoader() {
   }, 780)
 }
 
-function failWorkflowLoader(message = 'Workflow route interrupted. Check backend availability.') {
+function failWorkflowLoader(message = 'Workflow interrupted. Check backend availability.') {
   stopWorkflowLoader()
   loaderCaption.textContent = message
   workflowMap.querySelectorAll('.map-node.is-active').forEach((nodeElement) => {
@@ -1825,7 +1825,7 @@ form.addEventListener('submit', async (event) => {
             ? 'Workflow failed'
             : 'Backend unavailable',
       didTimeout
-        ? 'The agent route completed, but the backend did not return before the timeout. Try a shorter prompt or run the backend logs to inspect the Gemini call.'
+        ? 'The workflow ran, but the backend did not return before the timeout. Try a shorter prompt or inspect the backend logs.'
         : isUploadError
           ? message
           : isWorkflowError
@@ -1835,7 +1835,7 @@ form.addEventListener('submit', async (event) => {
     failWorkflowLoader(
       didTimeout
         ? 'Workflow timed out while waiting for the backend response.'
-        : 'Workflow route interrupted. Check backend availability.',
+        : 'Workflow interrupted. Check backend availability.',
     )
     console.error(error)
   } finally {

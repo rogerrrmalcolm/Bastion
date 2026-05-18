@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 from fastapi import FastAPI
 from fastapi import File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,6 +81,11 @@ async def upload_pdf_to_s3(
             key,
             ExtraArgs={"ContentType": "application/pdf"},
         )
+    except NoCredentialsError as error:
+        raise HTTPException(
+            status_code=401,
+            detail="S3 credentials not found. Run aws configure in the same Windows user account, then restart the backend.",
+        ) from error
     except (BotoCoreError, ClientError) as error:
         raise HTTPException(status_code=502, detail=f"S3 upload failed: {error}") from error
 
