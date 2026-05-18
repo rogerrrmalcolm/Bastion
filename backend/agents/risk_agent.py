@@ -1,8 +1,8 @@
 import json
 
-from backend.gemini_client import call_gemini_structured
-from backend.schemas import RiskAnalysis
-from backend.tools.risk_research import build_risk_research_context
+from gemini_client import call_gemini_structured
+from schemas import RiskAnalysis
+from tools.risk_research import build_risk_research_context
 
 
 def _risk_tool_context(company_text: str) -> str:

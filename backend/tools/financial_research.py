@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
-from backend.tools.market_research import QuoteSnapshot, extract_tickers, fetch_quote_snapshot
+from tools.market_research import QuoteSnapshot, extract_tickers, fetch_quote_snapshot
 
 
 MONEY_VALUE = r"\$?\s?\d+(?:,\d{3})*(?:\.\d+)?\s?(?:k|m|mm|million|b|bn|billion)?"

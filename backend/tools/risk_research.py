@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
-from backend.tools.market_research import (
+from tools.market_research import (
     NewsSearchResult,
     build_deal_market_queries,
     infer_sector_terms,

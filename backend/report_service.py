@@ -1,4 +1,4 @@
-from backend.schemas import (
+from schemas import (
     AgentContribution,
     AgentName,
     FinancialAnalysis,

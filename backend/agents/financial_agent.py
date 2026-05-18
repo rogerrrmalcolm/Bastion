@@ -1,8 +1,8 @@
 import json
 
-from backend.gemini_client import call_gemini_structured
-from backend.schemas import FinancialAnalysis
-from backend.tools.financial_research import build_financial_research_context
+from gemini_client import call_gemini_structured
+from schemas import FinancialAnalysis
+from tools.financial_research import build_financial_research_context
 
 FINANCIAL_HIGHLIGHT_METRICS = """
 Prefer annual-report-style financial highlights when present:

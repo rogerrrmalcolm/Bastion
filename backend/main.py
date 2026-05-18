@@ -9,14 +9,14 @@ from fastapi import FastAPI
 from fastapi import File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.agents.workflow import (
+from agents.workflow import (
     ParallelAgent,
     SequentialAgent,
     run_investment_banking_workflow,
 )
-from backend.gemini_client import call_gemini
-from backend.memory import memory_store
-from backend.schemas import (
+from gemini_client import call_gemini
+from memory import memory_store
+from schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
     ChatRequest,

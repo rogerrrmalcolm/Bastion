@@ -1,8 +1,8 @@
 import json
 
-from backend.gemini_client import call_gemini_structured
-from backend.schemas import MarketAnalysis
-from backend.tools.market_research import build_market_research_context
+from gemini_client import call_gemini_structured
+from schemas import MarketAnalysis
+from tools.market_research import build_market_research_context
 
 
 def _live_market_research_context(company_text: str) -> str:

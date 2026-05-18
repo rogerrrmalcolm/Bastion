@@ -1,14 +1,14 @@
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.agents.financial_agent import run_financial_agent
-from backend.agents.market_agent import run_market_agent
-from backend.agents.memo_agent import run_memo_agent
-from backend.agents.orchestrator_agent import DEFAULT_PLAN, run_orchestrator_agent
-from backend.agents.risk_agent import run_risk_agent
-from backend.memory import memory_store
-from backend.report_service import build_report_package
-from backend.schemas import (
+from agents.financial_agent import run_financial_agent
+from agents.market_agent import run_market_agent
+from agents.memo_agent import run_memo_agent
+from agents.orchestrator_agent import DEFAULT_PLAN, run_orchestrator_agent
+from agents.risk_agent import run_risk_agent
+from memory import memory_store
+from report_service import build_report_package
+from schemas import (
     AgentExecutionStep,
     AnalyzeRequest,
     AnalyzeResponse,

@@ -1,5 +1,5 @@
-from backend.gemini_client import call_gemini_structured
-from backend.schemas import (
+from gemini_client import call_gemini_structured
+from schemas import (
     FinancialAnalysis,
     InvestmentMemo,
     MarketAnalysis,

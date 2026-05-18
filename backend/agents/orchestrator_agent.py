@@ -1,5 +1,5 @@
-from backend.gemini_client import call_gemini_structured
-from backend.schemas import AgentExecutionStep, OrchestrationPlan, ToolAssignment
+from gemini_client import call_gemini_structured
+from schemas import AgentExecutionStep, OrchestrationPlan, ToolAssignment
 
 
 DEFAULT_PLAN = OrchestrationPlan(
