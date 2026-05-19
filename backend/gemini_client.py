@@ -1,4 +1,7 @@
+import json
+import os
 from pathlib import Path
+import tempfile
 import time
 from collections.abc import Callable
 from typing import TypeVar
@@ -23,6 +26,20 @@ and decision-oriented; use lists only for the most material items.
 """
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+
+def _configure_google_credentials() -> None:
+    credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if not credentials_json or os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        return
+
+    credentials_path = Path(tempfile.gettempdir()) / "bastion-google-credentials.json"
+    credentials = json.loads(credentials_json)
+    credentials_path.write_text(json.dumps(credentials), encoding="utf-8")
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(credentials_path)
+
+
+_configure_google_credentials()
 
 client = genai.Client()
 StructuredResponse = TypeVar("StructuredResponse", bound=BaseModel)

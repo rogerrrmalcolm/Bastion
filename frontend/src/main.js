@@ -257,6 +257,7 @@ const introDuration = 2.85
 const workspaceTransitionDuration = 2.15
 const WORKFLOW_TIMEOUT_MS = 420000
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
+const isLocalApiBaseUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_BASE_URL)
 const DASHBOARD_STORAGE_KEY = 'bastion-dashboard-analyses'
 const confidenceScores = {
   low: 34,
@@ -1830,7 +1831,9 @@ form.addEventListener('submit', async (event) => {
           ? message
           : isWorkflowError
             ? message
-            : 'Start the FastAPI backend on port 8000, then run the workflow again.',
+            : isLocalApiBaseUrl
+              ? 'Start the FastAPI backend on port 8000, then run the workflow again.'
+              : `Could not reach the backend at ${API_BASE_URL}. Check the Vercel VITE_API_BASE_URL value, Render CORS_ORIGINS, and Render logs.`,
     )
     failWorkflowLoader(
       didTimeout
