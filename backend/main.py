@@ -36,6 +36,26 @@ DEFAULT_CORS_ORIGINS = [
 ]
 
 
+def _env_status(name: str) -> str:
+    return "set" if os.getenv(name) else "missing"
+
+
+def _aws_credentials_error_detail() -> str:
+    return (
+        "S3 credentials not found by the backend process. "
+        "For local runs, configure AWS in the same Windows user account and restart the backend. "
+        "For Google Cloud, set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY on the deployed backend service, "
+        "then create a new revision/redeploy. "
+        "Runtime env status: "
+        f"AWS_ACCESS_KEY_ID={_env_status('AWS_ACCESS_KEY_ID')}, "
+        f"AWS_SECRET_ACCESS_KEY={_env_status('AWS_SECRET_ACCESS_KEY')}, "
+        f"AWS_SESSION_TOKEN={_env_status('AWS_SESSION_TOKEN')}, "
+        f"AWS_PROFILE={_env_status('AWS_PROFILE')}, "
+        f"AWS_REGION={_env_status('AWS_REGION')}, "
+        f"AWS_DEFAULT_REGION={_env_status('AWS_DEFAULT_REGION')}."
+    )
+
+
 def _cors_origins() -> list[str]:
     configured_origins = os.getenv("CORS_ORIGINS") or os.getenv("FRONTEND_URL")
     if not configured_origins:
@@ -98,7 +118,7 @@ async def upload_pdf_to_s3(
     except NoCredentialsError as error:
         raise HTTPException(
             status_code=401,
-            detail="S3 credentials not found. Run aws configure in the same Windows user account, then restart the backend.",
+            detail=_aws_credentials_error_detail(),
         ) from error
     except (BotoCoreError, ClientError) as error:
         raise HTTPException(status_code=502, detail=f"S3 upload failed: {error}") from error
