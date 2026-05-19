@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 
@@ -21,6 +22,7 @@ from schemas import (
 )
 
 AgentCall = Callable[[], object]
+logger = logging.getLogger("bastion.workflow")
 
 
 class ParallelAgent:
@@ -150,9 +152,11 @@ def run_planned_specialist_agents(
 
     for agent_name in CORE_SPECIALIST_SEQUENCE:
         step = _step_for_agent(plan, agent_name)
+        logger.info("Starting specialist agent: %s", agent_name)
         outputs[agent_name] = SPECIALIST_RUNNERS[agent_name](
             _agent_context(company_text, step, outputs)
         )
+        logger.info("Finished specialist agent: %s", agent_name)
 
     return (
         outputs["market_agent"],
@@ -176,8 +180,11 @@ Current structured M&A deal context:
     memory_store.add_message(session.session_id, "user", deal_context)
 
     try:
+        logger.info("Starting orchestrator agent")
         orchestration_plan = run_orchestrator_agent(company_text_with_memory)
+        logger.info("Finished orchestrator agent")
     except Exception:
+        logger.exception("Orchestrator failed; using default plan")
         orchestration_plan = DEFAULT_PLAN
 
     market_analysis, financial_analysis, risk_analysis = run_planned_specialist_agents(
@@ -201,7 +208,10 @@ Current structured M&A deal context:
             )
         }
     )
+    logger.info("Starting memo agent")
     investment_memo = sequential_agent.run()["memo_agent"]
+    logger.info("Finished memo agent")
+    logger.info("Building report package")
     report = build_report_package(
         orchestration_plan,
         market_analysis,

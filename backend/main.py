@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from pathlib import Path
@@ -27,6 +28,7 @@ from schemas import (
 
 
 app = FastAPI(title="Bastion AI Investment Banking Backend")
+logger = logging.getLogger("bastion")
 S3_PREFIX = os.getenv("S3_PREFIX", "pdfs").strip("/")
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
@@ -139,7 +141,15 @@ Current user message:
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
-    return run_investment_banking_workflow(request)
+    try:
+        return run_investment_banking_workflow(request)
+    except Exception as error:
+        logger.exception("Analyze workflow failed")
+        detail = str(error).replace("\n", " ")[:500] or type(error).__name__
+        raise HTTPException(
+            status_code=500,
+            detail=f"Workflow failed in backend: {type(error).__name__}: {detail}",
+        ) from error
 
 
 @app.get("/sessions/{session_id}/memory", response_model=SessionMemoryResponse)
