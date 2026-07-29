@@ -18,8 +18,12 @@ def _live_market_research_context(company_text: str) -> str:
         )
 
 
-def run_market_agent(company_text: str) -> MarketAnalysis:
-    market_research_context = _live_market_research_context(company_text)
+def run_market_agent(
+    company_text: str,
+    market_research_context: str | None = None,
+) -> MarketAnalysis:
+    if market_research_context is None:
+        market_research_context = _live_market_research_context(company_text)
 
     return call_gemini_structured(
         f"""

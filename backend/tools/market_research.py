@@ -99,6 +99,8 @@ class MarketResearchContext:
     quote_snapshots: list[QuoteSnapshot]
     news_results: list[NewsSearchResult]
     notes: list[str]
+    retrieval_succeeded: bool
+    retrieval_errors: list[str]
 
     def to_prompt_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
@@ -217,7 +219,10 @@ def fetch_quote_snapshot(ticker: str, description: str) -> QuoteSnapshot:
         )
 
 
-def search_google_news(query: str, relevance: str) -> list[NewsSearchResult]:
+def search_google_news_with_status(
+    query: str,
+    relevance: str,
+) -> tuple[list[NewsSearchResult], str | None]:
     url = "https://news.google.com/rss/search?" + urlencode(
         {
             "q": query,
@@ -229,8 +234,8 @@ def search_google_news(query: str, relevance: str) -> list[NewsSearchResult]:
     results: list[NewsSearchResult] = []
     try:
         root = _fetch_xml(url)
-    except Exception:
-        return results
+    except Exception as error:
+        return results, f"{query}: {type(error).__name__}: {error}"
 
     for item in root.findall("./channel/item")[:MAX_NEWS_ITEMS_PER_QUERY]:
         source = item.find("source")
@@ -246,6 +251,11 @@ def search_google_news(query: str, relevance: str) -> list[NewsSearchResult]:
             )
         )
 
+    return results, None
+
+
+def search_google_news(query: str, relevance: str) -> list[NewsSearchResult]:
+    results, _ = search_google_news_with_status(query, relevance)
     return results
 
 
@@ -386,15 +396,33 @@ def build_market_research_context(company_text: str) -> MarketResearchContext:
             for ticker, description in quote_targets.items()
         ]
         news_futures = [
-            executor.submit(search_google_news, query, relevance)
+            executor.submit(search_google_news_with_status, query, relevance)
             for query, relevance in search_queries
         ]
         quote_snapshots = [future.result() for future in quote_futures]
+        news_attempts = [future.result() for future in news_futures]
         news_results = [
             result
-            for future in news_futures
-            for result in future.result()
+            for results, _ in news_attempts
+            for result in results
         ][:MAX_TOTAL_NEWS_ITEMS]
+
+    retrieval_errors = [
+        f"{snapshot.ticker}: {snapshot.error}"
+        for snapshot in quote_snapshots
+        if snapshot.error
+    ]
+    retrieval_errors.extend(
+        error
+        for _, error in news_attempts
+        if error
+    )
+    quote_retrieval_succeeded = any(
+        snapshot.error is None for snapshot in quote_snapshots
+    )
+    news_retrieval_succeeded = any(
+        error is None for _, error in news_attempts
+    )
 
     notes = [
         "News results come from Google News RSS and should be treated as current search context, not a full diligence file.",
@@ -411,4 +439,8 @@ def build_market_research_context(company_text: str) -> MarketResearchContext:
         quote_snapshots=quote_snapshots,
         news_results=news_results,
         notes=notes,
+        retrieval_succeeded=(
+            quote_retrieval_succeeded or news_retrieval_succeeded
+        ),
+        retrieval_errors=retrieval_errors,
     )

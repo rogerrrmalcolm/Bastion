@@ -1,6 +1,10 @@
+import json
 import logging
-from collections.abc import Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
+import operator
+from collections.abc import Callable
+from typing import Annotated, Literal, TypedDict
+
+from langgraph.graph import END, START, StateGraph
 
 from agents.financial_agent import run_financial_agent
 from agents.market_agent import run_market_agent
@@ -20,42 +24,58 @@ from schemas import (
     ReportPackage,
     RiskAnalysis,
 )
+from tools.financial_research import build_financial_research_context
+from tools.market_research import build_market_research_context
+from tools.risk_research import build_risk_research_context
 
-AgentCall = Callable[[], object]
+SpecialistRunner = Callable[[str, str | None], object]
+ResearchBuilder = Callable[[str], object]
+ResearchStatus = Literal["pending", "retrying", "succeeded", "exhausted"]
+
+DEFAULT_RETRIEVAL_ATTEMPTS = 3
+GRAPH_RECURSION_LIMIT = 32
+
 logger = logging.getLogger("bastion.workflow")
 
 
-class ParallelAgent:
-    def __init__(self, agents: Mapping[str, AgentCall]) -> None:
-        self.agents = agents
-
-    def run(self) -> dict[str, object]:
-        with ThreadPoolExecutor(max_workers=len(self.agents)) as executor:
-            futures = {
-                name: executor.submit(agent_call)
-                for name, agent_call in self.agents.items()
-            }
-            return {name: future.result() for name, future in futures.items()}
-
-
-class SequentialAgent:
-    def __init__(self, agents: Mapping[str, AgentCall]) -> None:
-        self.agents = agents
-
-    def run(self) -> dict[str, object]:
-        return {name: agent_call() for name, agent_call in self.agents.items()}
+class BastionGraphState(TypedDict, total=False):
+    session_id: str
+    company_text: str
+    orchestration_plan: OrchestrationPlan
+    market_analysis: MarketAnalysis
+    financial_analysis: FinancialAnalysis
+    risk_analysis: RiskAnalysis
+    investment_memo: InvestmentMemo
+    report: ReportPackage
+    research_contexts: dict[str, str]
+    retrieval_attempts: dict[str, int]
+    retrieval_statuses: dict[str, ResearchStatus]
+    retrieval_errors: dict[str, str]
+    max_retrieval_attempts: int
+    execution_trace: Annotated[list[str], operator.add]
+    workflow_warnings: Annotated[list[str], operator.add]
 
 
-SPECIALIST_RUNNERS = {
+SPECIALIST_RUNNERS: dict[str, SpecialistRunner] = {
     "market_agent": run_market_agent,
     "financial_agent": run_financial_agent,
     "risk_agent": run_risk_agent,
 }
 
-CORE_SPECIALIST_SEQUENCE = ("market_agent", "financial_agent", "risk_agent")
+RESEARCH_BUILDERS: dict[str, ResearchBuilder] = {
+    "market_agent": build_market_research_context,
+    "financial_agent": build_financial_research_context,
+    "risk_agent": build_risk_research_context,
+}
 
 SYNTHESIS_RUNNERS = {
     "memo_agent": run_memo_agent,
+}
+
+SPECIALIST_OUTPUT_KEYS = {
+    "market_agent": "market_analysis",
+    "financial_agent": "financial_analysis",
+    "risk_agent": "risk_analysis",
 }
 
 
@@ -144,25 +164,319 @@ def _workflow_memory_summary(memo: InvestmentMemo, report: ReportPackage) -> str
     )
 
 
-def run_planned_specialist_agents(
-    company_text: str,
-    plan: OrchestrationPlan,
-) -> tuple[MarketAnalysis, FinancialAnalysis, RiskAnalysis]:
-    outputs: dict[str, object] = {}
+def _run_orchestrator_node(state: BastionGraphState) -> dict[str, object]:
+    logger.info("Starting orchestrator agent")
+    try:
+        plan = run_orchestrator_agent(state["company_text"])
+        warnings: list[str] = []
+    except Exception as error:
+        logger.exception("Orchestrator failed; using default plan")
+        plan = DEFAULT_PLAN
+        warnings = [
+            "The orchestrator failed and Bastion used its validated default plan: "
+            f"{type(error).__name__}."
+        ]
+    logger.info("Finished orchestrator agent")
+    return {
+        "orchestration_plan": plan,
+        "execution_trace": ["orchestrator_agent"],
+        "workflow_warnings": warnings,
+    }
 
-    for agent_name in CORE_SPECIALIST_SEQUENCE:
-        step = _step_for_agent(plan, agent_name)
-        logger.info("Starting specialist agent: %s", agent_name)
-        outputs[agent_name] = SPECIALIST_RUNNERS[agent_name](
-            _agent_context(company_text, step, outputs)
-        )
-        logger.info("Finished specialist agent: %s", agent_name)
 
-    return (
-        outputs["market_agent"],
-        outputs["financial_agent"],
-        outputs["risk_agent"],
+def _serialize_research_context(research_context: object) -> str:
+    if hasattr(research_context, "to_prompt_json"):
+        return research_context.to_prompt_json()
+    if hasattr(research_context, "model_dump_json"):
+        return research_context.model_dump_json(indent=2)
+    if isinstance(research_context, str):
+        return research_context
+    return json.dumps(research_context, default=str, indent=2)
+
+
+def _retrieval_failure_detail(research_context: object) -> str | None:
+    if getattr(research_context, "retrieval_succeeded", True):
+        return None
+    errors = getattr(research_context, "retrieval_errors", [])
+    if errors:
+        return "; ".join(str(error) for error in errors)[:2000]
+    return "The research provider returned no successful retrieval attempts."
+
+
+def _research_error_packet(
+    agent_name: str,
+    attempt: int,
+    detail: str,
+) -> str:
+    return json.dumps(
+        {
+            "retrieval_succeeded": False,
+            "agent_name": agent_name,
+            "attempts": attempt,
+            "error": detail,
+            "instruction": (
+                "Treat external research as unavailable. Use only supplied deal "
+                "context, label unsupported points, and preserve this limitation."
+            ),
+        },
+        indent=2,
     )
+
+
+def _run_research_node(
+    state: BastionGraphState,
+    agent_name: str,
+) -> dict[str, object]:
+    attempts = dict(state.get("retrieval_attempts", {}))
+    statuses = dict(state.get("retrieval_statuses", {}))
+    errors = dict(state.get("retrieval_errors", {}))
+    contexts = dict(state.get("research_contexts", {}))
+
+    attempt = attempts.get(agent_name, 0) + 1
+    attempts[agent_name] = attempt
+    max_attempts = max(1, state.get(
+        "max_retrieval_attempts",
+        DEFAULT_RETRIEVAL_ATTEMPTS,
+    ))
+    node_name = f"{agent_name.removesuffix('_agent')}_research"
+
+    try:
+        research_context = RESEARCH_BUILDERS[agent_name](state["company_text"])
+        serialized_context = _serialize_research_context(research_context)
+        failure_detail = _retrieval_failure_detail(research_context)
+    except Exception as error:
+        logger.exception(
+            "Research node failed for %s on attempt %s",
+            agent_name,
+            attempt,
+        )
+        failure_detail = f"{type(error).__name__}: {error}"[:2000]
+        serialized_context = _research_error_packet(
+            agent_name,
+            attempt,
+            failure_detail,
+        )
+
+    update: dict[str, object] = {
+        "retrieval_attempts": attempts,
+        "retrieval_statuses": statuses,
+        "retrieval_errors": errors,
+        "research_contexts": contexts,
+        "execution_trace": [f"{node_name}:{attempt}"],
+    }
+
+    if failure_detail is None:
+        statuses[agent_name] = "succeeded"
+        errors.pop(agent_name, None)
+        contexts[agent_name] = serialized_context
+        logger.info(
+            "Research succeeded for %s on attempt %s",
+            agent_name,
+            attempt,
+        )
+        return update
+
+    errors[agent_name] = failure_detail
+    contexts[agent_name] = serialized_context
+    if attempt < max_attempts:
+        statuses[agent_name] = "retrying"
+        logger.warning(
+            "Research failed for %s on attempt %s/%s; retrying",
+            agent_name,
+            attempt,
+            max_attempts,
+        )
+        return update
+
+    statuses[agent_name] = "exhausted"
+    contexts[agent_name] = _research_error_packet(
+        agent_name,
+        attempt,
+        failure_detail,
+    )
+    update["workflow_warnings"] = [
+        f"{agent_name} research failed after {attempt} attempts. "
+        "The specialist continued with supplied deal context and an explicit "
+        "research limitation."
+    ]
+    logger.error(
+        "Research exhausted for %s after %s attempts",
+        agent_name,
+        attempt,
+    )
+    return update
+
+
+def _run_market_research_node(state: BastionGraphState) -> dict[str, object]:
+    return _run_research_node(state, "market_agent")
+
+
+def _run_financial_research_node(state: BastionGraphState) -> dict[str, object]:
+    return _run_research_node(state, "financial_agent")
+
+
+def _run_risk_research_node(state: BastionGraphState) -> dict[str, object]:
+    return _run_research_node(state, "risk_agent")
+
+
+def _route_research(
+    state: BastionGraphState,
+    agent_name: str,
+) -> Literal["retry", "continue"]:
+    if state.get("retrieval_statuses", {}).get(agent_name) == "retrying":
+        return "retry"
+    return "continue"
+
+
+def _route_market_research(
+    state: BastionGraphState,
+) -> Literal["retry", "continue"]:
+    return _route_research(state, "market_agent")
+
+
+def _route_financial_research(
+    state: BastionGraphState,
+) -> Literal["retry", "continue"]:
+    return _route_research(state, "financial_agent")
+
+
+def _route_risk_research(
+    state: BastionGraphState,
+) -> Literal["retry", "continue"]:
+    return _route_research(state, "risk_agent")
+
+
+def _prior_outputs_for_agent(
+    state: BastionGraphState,
+    agent_name: str,
+) -> dict[str, object]:
+    if agent_name == "financial_agent":
+        return {"market_agent": state["market_analysis"]}
+    if agent_name == "risk_agent":
+        return {
+            "market_agent": state["market_analysis"],
+            "financial_agent": state["financial_analysis"],
+        }
+    return {}
+
+
+def _run_specialist_node(
+    state: BastionGraphState,
+    agent_name: str,
+) -> dict[str, object]:
+    plan = state["orchestration_plan"]
+    step = _step_for_agent(plan, agent_name)
+    context = _agent_context(
+        state["company_text"],
+        step,
+        _prior_outputs_for_agent(state, agent_name),
+    )
+    research_context = state.get("research_contexts", {}).get(agent_name)
+
+    logger.info("Starting specialist agent: %s", agent_name)
+    output = SPECIALIST_RUNNERS[agent_name](context, research_context)
+    logger.info("Finished specialist agent: %s", agent_name)
+
+    return {
+        SPECIALIST_OUTPUT_KEYS[agent_name]: output,
+        "execution_trace": [agent_name],
+    }
+
+
+def _run_market_node(state: BastionGraphState) -> dict[str, object]:
+    return _run_specialist_node(state, "market_agent")
+
+
+def _run_financial_node(state: BastionGraphState) -> dict[str, object]:
+    return _run_specialist_node(state, "financial_agent")
+
+
+def _run_risk_node(state: BastionGraphState) -> dict[str, object]:
+    return _run_specialist_node(state, "risk_agent")
+
+
+def _run_memo_node(state: BastionGraphState) -> dict[str, object]:
+    memo_step = _step_for_agent(state["orchestration_plan"], "memo_agent")
+    logger.info("Starting memo agent")
+    memo = SYNTHESIS_RUNNERS["memo_agent"](
+        company_text=_agent_context(
+            state["company_text"],
+            memo_step,
+            {},
+        ),
+        market_analysis=state["market_analysis"],
+        financial_analysis=state["financial_analysis"],
+        risk_analysis=state["risk_analysis"],
+    )
+    logger.info("Finished memo agent")
+    return {
+        "investment_memo": memo,
+        "execution_trace": ["memo_agent"],
+    }
+
+
+def _build_report_node(state: BastionGraphState) -> dict[str, object]:
+    logger.info("Building report package")
+    report = build_report_package(
+        state["orchestration_plan"],
+        state["market_analysis"],
+        state["financial_analysis"],
+        state["risk_analysis"],
+        state["investment_memo"],
+    )
+    return {
+        "report": report,
+        "execution_trace": ["build_report"],
+    }
+
+
+def build_diligence_graph():
+    graph = StateGraph(BastionGraphState)
+    graph.add_node("orchestrator_agent", _run_orchestrator_node)
+    graph.add_node("market_research", _run_market_research_node)
+    graph.add_node("market_agent", _run_market_node)
+    graph.add_node("financial_research", _run_financial_research_node)
+    graph.add_node("financial_agent", _run_financial_node)
+    graph.add_node("risk_research", _run_risk_research_node)
+    graph.add_node("risk_agent", _run_risk_node)
+    graph.add_node("memo_agent", _run_memo_node)
+    graph.add_node("build_report", _build_report_node)
+
+    graph.add_edge(START, "orchestrator_agent")
+    graph.add_edge("orchestrator_agent", "market_research")
+    graph.add_conditional_edges(
+        "market_research",
+        _route_market_research,
+        {
+            "retry": "market_research",
+            "continue": "market_agent",
+        },
+    )
+    graph.add_edge("market_agent", "financial_research")
+    graph.add_conditional_edges(
+        "financial_research",
+        _route_financial_research,
+        {
+            "retry": "financial_research",
+            "continue": "financial_agent",
+        },
+    )
+    graph.add_edge("financial_agent", "risk_research")
+    graph.add_conditional_edges(
+        "risk_research",
+        _route_risk_research,
+        {
+            "retry": "risk_research",
+            "continue": "risk_agent",
+        },
+    )
+    graph.add_edge("risk_agent", "memo_agent")
+    graph.add_edge("memo_agent", "build_report")
+    graph.add_edge("build_report", END)
+    return graph.compile()
+
+
+DILIGENCE_GRAPH = build_diligence_graph()
 
 
 def run_investment_banking_workflow(request: AnalyzeRequest) -> AnalyzeResponse:
@@ -179,47 +493,24 @@ Current structured M&A deal context:
 
     memory_store.add_message(session.session_id, "user", deal_context)
 
-    try:
-        logger.info("Starting orchestrator agent")
-        orchestration_plan = run_orchestrator_agent(company_text_with_memory)
-        logger.info("Finished orchestrator agent")
-    except Exception:
-        logger.exception("Orchestrator failed; using default plan")
-        orchestration_plan = DEFAULT_PLAN
-
-    market_analysis, financial_analysis, risk_analysis = run_planned_specialist_agents(
-        company_text_with_memory,
-        orchestration_plan,
+    initial_state: BastionGraphState = {
+        "session_id": session.session_id,
+        "company_text": company_text_with_memory,
+        "research_contexts": {},
+        "retrieval_attempts": {},
+        "retrieval_statuses": {},
+        "retrieval_errors": {},
+        "max_retrieval_attempts": DEFAULT_RETRIEVAL_ATTEMPTS,
+        "execution_trace": [],
+        "workflow_warnings": [],
+    }
+    final_state = DILIGENCE_GRAPH.invoke(
+        initial_state,
+        config={"recursion_limit": GRAPH_RECURSION_LIMIT},
     )
 
-    memo_step = _step_for_agent(orchestration_plan, "memo_agent")
-
-    sequential_agent = SequentialAgent(
-        {
-            "memo_agent": lambda: SYNTHESIS_RUNNERS["memo_agent"](
-                company_text=_agent_context(
-                    company_text_with_memory,
-                    memo_step,
-                    {},
-                ),
-                market_analysis=market_analysis,
-                financial_analysis=financial_analysis,
-                risk_analysis=risk_analysis,
-            )
-        }
-    )
-    logger.info("Starting memo agent")
-    investment_memo = sequential_agent.run()["memo_agent"]
-    logger.info("Finished memo agent")
-    logger.info("Building report package")
-    report = build_report_package(
-        orchestration_plan,
-        market_analysis,
-        financial_analysis,
-        risk_analysis,
-        investment_memo,
-    )
-
+    investment_memo = final_state["investment_memo"]
+    report = final_state["report"]
     memory_store.add_message(
         session.session_id,
         "assistant",
@@ -228,10 +519,10 @@ Current structured M&A deal context:
 
     return AnalyzeResponse(
         session_id=session.session_id,
-        orchestration_plan=orchestration_plan,
-        market_analysis=market_analysis,
-        financial_analysis=financial_analysis,
-        risk_analysis=risk_analysis,
+        orchestration_plan=final_state["orchestration_plan"],
+        market_analysis=final_state["market_analysis"],
+        financial_analysis=final_state["financial_analysis"],
+        risk_analysis=final_state["risk_analysis"],
         investment_memo=investment_memo,
         report=report,
     )

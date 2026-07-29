@@ -18,8 +18,12 @@ def _risk_tool_context(company_text: str) -> str:
         )
 
 
-def run_risk_agent(company_text: str) -> RiskAnalysis:
-    risk_tool_context = _risk_tool_context(company_text)
+def run_risk_agent(
+    company_text: str,
+    risk_tool_context: str | None = None,
+) -> RiskAnalysis:
+    if risk_tool_context is None:
+        risk_tool_context = _risk_tool_context(company_text)
 
     return call_gemini_structured(
         f"""

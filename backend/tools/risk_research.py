@@ -11,7 +11,7 @@ from tools.market_research import (
     build_deal_market_queries,
     infer_sector_terms,
     infer_target_company,
-    search_google_news,
+    search_google_news_with_status,
 )
 
 
@@ -110,6 +110,8 @@ class RiskResearchContext:
     news_results: list[NewsSearchResult]
     search_queries: list[str]
     notes: list[str]
+    retrieval_succeeded: bool
+    retrieval_errors: list[str]
 
     def to_prompt_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
@@ -207,13 +209,22 @@ def build_risk_search_queries(company_text: str) -> list[tuple[str, str]]:
 def build_risk_research_context(company_text: str) -> RiskResearchContext:
     search_queries = build_risk_search_queries(company_text)
     with ThreadPoolExecutor(max_workers=6) as executor:
-        search_result_groups = list(
+        search_attempts = list(
             executor.map(
-                lambda query: search_google_news(query[0], query[1])[:3],
+                lambda query: search_google_news_with_status(query[0], query[1]),
                 search_queries,
             )
         )
-    news_results = [result for group in search_result_groups for result in group][:12]
+    news_results = [
+        result
+        for results, _ in search_attempts
+        for result in results[:3]
+    ][:12]
+    retrieval_errors = [
+        error
+        for _, error in search_attempts
+        if error
+    ]
 
     return RiskResearchContext(
         generated_at=datetime.now(UTC).isoformat(),
@@ -224,4 +235,9 @@ def build_risk_research_context(company_text: str) -> RiskResearchContext:
             "Risk search uses current Google News RSS results and is not a substitute for legal, cyber, or regulatory diligence.",
             "Internal risk signals are extracted from the provided company context and should be verified in source materials.",
         ],
+        retrieval_succeeded=(
+            not search_attempts
+            or any(error is None for _, error in search_attempts)
+        ),
+        retrieval_errors=retrieval_errors,
     )

@@ -9,7 +9,7 @@ from schemas import (
 
 def _to_json_context(value: object) -> str:
     if hasattr(value, "model_dump_json"):
-        return value.model_dump_json(indent=2)
+        return value.model_dump_json(indent=2)  # type: ignore
     return str(value)
 
 

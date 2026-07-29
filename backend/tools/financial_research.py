@@ -80,6 +80,8 @@ class FinancialResearchContext:
     calculated_metrics: list[FinancialCalculation]
     public_comp_snapshots: list[QuoteSnapshot]
     notes: list[str]
+    retrieval_succeeded: bool
+    retrieval_errors: list[str]
 
     def to_prompt_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
@@ -192,6 +194,11 @@ def build_financial_research_context(company_text: str) -> FinancialResearchCont
                 tickers[:8],
             )
         )
+    retrieval_errors = [
+        f"{snapshot.ticker}: {snapshot.error}"
+        for snapshot in public_comp_snapshots
+        if snapshot.error
+    ]
 
     return FinancialResearchContext(
         generated_at=datetime.now(UTC).isoformat(),
@@ -203,4 +210,9 @@ def build_financial_research_context(company_text: str) -> FinancialResearchCont
             "Calculated metrics are simple deterministic calculations from extracted values.",
             "Public comp snapshots are current market context only; they are not a full valuation model.",
         ],
+        retrieval_succeeded=(
+            not public_comp_snapshots
+            or any(snapshot.error is None for snapshot in public_comp_snapshots)
+        ),
+        retrieval_errors=retrieval_errors,
     )

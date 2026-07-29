@@ -32,8 +32,12 @@ def _financial_tool_context(company_text: str) -> str:
         )
 
 
-def run_financial_agent(company_text: str) -> FinancialAnalysis:
-    financial_tool_context = _financial_tool_context(company_text)
+def run_financial_agent(
+    company_text: str,
+    financial_tool_context: str | None = None,
+) -> FinancialAnalysis:
+    if financial_tool_context is None:
+        financial_tool_context = _financial_tool_context(company_text)
 
     return call_gemini_structured(
         f"""

@@ -5,6 +5,7 @@ Bastion is an AI-powered M&A diligence workspace that turns buyer context, targe
 ## Technical Overview
 
 - **FastAPI backend** handles the API surface, request validation, CORS, PDF upload routing, and orchestration of the agent workflow.
+- **LangGraph** executes the diligence workflow as a typed state graph with explicit agent handoffs, conditional research retries, and bounded cycles.
 - **Pydantic schemas** define strict contracts between agents so outputs stay structured, typed, and usable by the frontend.
 - **Google Gemini** powers the reasoning layer. It is used for advanced, context-heavy analysis where the model must compare incomplete buyer and target information, separate facts from assumptions, and produce structured JSON responses.
 - **Vite + vanilla JavaScript** keeps the frontend lightweight and fast without adding unnecessary framework complexity.
@@ -21,7 +22,7 @@ Bastion imitates how different groups inside a bank contribute to an M&A process
 4. **Risk Agent** acts like diligence, legal, regulatory, cyber, and integration review, translating risks into deal impact and purchase agreement considerations.
 5. **Memo Agent** acts like the investment committee synthesis layer, combining all specialist outputs into a recommendation, conditions, open questions, and source limitations.
 
-This structure keeps each analytical task scoped while allowing the final memo to reflect the full deal picture instead of a single generic model response.
+Each agent is a distinct LangGraph node operating on shared typed state. The default path remains orchestrator -> market -> financial -> risk -> memo so downstream agents receive upstream analysis, while market, financial, and risk research nodes can cycle on transient retrieval failures. Retry loops are capped; if retrieval remains unavailable, the specialist continues from supplied deal context with an explicit source limitation instead of fabricated evidence.
 
 ## Run locally
 
