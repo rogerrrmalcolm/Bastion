@@ -1,0 +1,39 @@
+{
+  "generated_at_utc": "2026-08-05T14:29:28.104301+00:00",
+  "environment": {
+    "python": "3.13.13",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 189 Stepping 1, GenuineIntel"
+  },
+  "iterations_per_measurement": 100,
+  "scope": "Local application overhead only. Synthetic agent outputs replace Gemini, market-data, news, S3, and internet calls. Results are not end-to-end production latency.",
+  "graph": {
+    "nine_node_state_graph": {
+      "p50_ms": 7.617,
+      "p95_ms": 20.707,
+      "mean_ms": 9.321,
+      "min_ms": 3.53,
+      "max_ms": 32.811,
+      "sequential_runs_per_second": 107.28
+    }
+  },
+  "session_memory": {
+    "message_write": {
+      "p50_ms": 0.002,
+      "p95_ms": 0.007,
+      "mean_ms": 0.003,
+      "min_ms": 0.002,
+      "max_ms": 0.014,
+      "sequential_runs_per_second": 380517.5
+    },
+    "bounded_recent_context_read": {
+      "p50_ms": 0.006,
+      "p95_ms": 0.007,
+      "mean_ms": 0.006,
+      "min_ms": 0.005,
+      "max_ms": 0.035,
+      "sequential_runs_per_second": 163505.56
+    },
+    "messages_present": 100
+  }
+}

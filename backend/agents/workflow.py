@@ -3,6 +3,7 @@ import logging
 import operator
 from collections.abc import Callable
 from typing import Annotated, Literal, TypedDict
+from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
@@ -23,6 +24,10 @@ from schemas import (
     OrchestrationPlan,
     ReportPackage,
     RiskAnalysis,
+    WorkflowDiagnostics,
+    WorkflowGraphEdge,
+    WorkflowGraphManifest,
+    WorkflowGraphNode,
 )
 from tools.financial_research import build_financial_research_context
 from tools.market_research import build_market_research_context
@@ -39,6 +44,7 @@ logger = logging.getLogger("bastion.workflow")
 
 
 class BastionGraphState(TypedDict, total=False):
+    workflow_run_id: str
     session_id: str
     company_text: str
     orchestration_plan: OrchestrationPlan
@@ -77,6 +83,105 @@ SPECIALIST_OUTPUT_KEYS = {
     "financial_agent": "financial_analysis",
     "risk_agent": "risk_analysis",
 }
+
+WORKFLOW_GRAPH_MANIFEST = WorkflowGraphManifest(
+    nodes=[
+        WorkflowGraphNode(
+            name="START",
+            kind="control",
+            description="Receives the initial request-scoped graph state.",
+        ),
+        WorkflowGraphNode(
+            name="orchestrator_agent",
+            kind="agent",
+            description="Builds the ordered diligence plan and tool assignments.",
+        ),
+        WorkflowGraphNode(
+            name="market_research",
+            kind="research",
+            description="Collects live market context and retries transient failures.",
+        ),
+        WorkflowGraphNode(
+            name="market_agent",
+            kind="agent",
+            description="Writes the market analysis into shared graph state.",
+        ),
+        WorkflowGraphNode(
+            name="financial_research",
+            kind="research",
+            description="Extracts financial evidence and public-market context.",
+        ),
+        WorkflowGraphNode(
+            name="financial_agent",
+            kind="agent",
+            description="Uses market output to write the financial analysis.",
+        ),
+        WorkflowGraphNode(
+            name="risk_research",
+            kind="research",
+            description="Collects internal and current external risk signals.",
+        ),
+        WorkflowGraphNode(
+            name="risk_agent",
+            kind="agent",
+            description="Uses market and financial outputs to write risk analysis.",
+        ),
+        WorkflowGraphNode(
+            name="memo_agent",
+            kind="agent",
+            description="Synthesizes every specialist output into the IC memo.",
+        ),
+        WorkflowGraphNode(
+            name="build_report",
+            kind="deterministic",
+            description="Builds the final structured report without an LLM call.",
+        ),
+        WorkflowGraphNode(
+            name="END",
+            kind="control",
+            description="Marks successful completion of the workflow run.",
+        ),
+    ],
+    edges=[
+        WorkflowGraphEdge(source="START", target="orchestrator_agent"),
+        WorkflowGraphEdge(source="orchestrator_agent", target="market_research"),
+        WorkflowGraphEdge(
+            source="market_research",
+            target="market_research",
+            condition="retry while retrieval_status is retrying",
+        ),
+        WorkflowGraphEdge(
+            source="market_research",
+            target="market_agent",
+            condition="continue after success or retry exhaustion",
+        ),
+        WorkflowGraphEdge(source="market_agent", target="financial_research"),
+        WorkflowGraphEdge(
+            source="financial_research",
+            target="financial_research",
+            condition="retry while retrieval_status is retrying",
+        ),
+        WorkflowGraphEdge(
+            source="financial_research",
+            target="financial_agent",
+            condition="continue after success or retry exhaustion",
+        ),
+        WorkflowGraphEdge(source="financial_agent", target="risk_research"),
+        WorkflowGraphEdge(
+            source="risk_research",
+            target="risk_research",
+            condition="retry while retrieval_status is retrying",
+        ),
+        WorkflowGraphEdge(
+            source="risk_research",
+            target="risk_agent",
+            condition="continue after success or retry exhaustion",
+        ),
+        WorkflowGraphEdge(source="risk_agent", target="memo_agent"),
+        WorkflowGraphEdge(source="memo_agent", target="build_report"),
+        WorkflowGraphEdge(source="build_report", target="END"),
+    ],
+)
 
 
 def _format_analyze_request_context(request: AnalyzeRequest) -> str:
@@ -125,7 +230,11 @@ def _step_for_agent(plan: OrchestrationPlan, agent_name: str) -> AgentExecutionS
     for step in plan.steps:
         if step.agent_name == agent_name:
             return step
-    return _step_for_agent(DEFAULT_PLAN, agent_name)
+    if plan is not DEFAULT_PLAN:
+        for step in DEFAULT_PLAN.steps:
+            if step.agent_name == agent_name:
+                return step
+    raise ValueError(f"No orchestration step exists for {agent_name}.")
 
 
 def _agent_context(
@@ -430,6 +539,22 @@ def _build_report_node(state: BastionGraphState) -> dict[str, object]:
     }
 
 
+def get_diligence_graph_manifest() -> WorkflowGraphManifest:
+    return WORKFLOW_GRAPH_MANIFEST.model_copy(deep=True)
+
+
+def _build_workflow_diagnostics(
+    state: BastionGraphState,
+) -> WorkflowDiagnostics:
+    return WorkflowDiagnostics(
+        workflow_run_id=state["workflow_run_id"],
+        execution_trace=list(state.get("execution_trace", [])),
+        retrieval_attempts=dict(state.get("retrieval_attempts", {})),
+        retrieval_statuses=dict(state.get("retrieval_statuses", {})),
+        warnings=list(state.get("workflow_warnings", [])),
+    )
+
+
 def build_diligence_graph():
     graph = StateGraph(BastionGraphState)
     graph.add_node("orchestrator_agent", _run_orchestrator_node)
@@ -480,6 +605,7 @@ DILIGENCE_GRAPH = build_diligence_graph()
 
 
 def run_investment_banking_workflow(request: AnalyzeRequest) -> AnalyzeResponse:
+    workflow_run_id = str(uuid4())
     session = memory_store.get_or_create(request.session_id)
     memory_context = memory_store.get_recent_context(session.session_id)
     deal_context = _format_analyze_request_context(request)
@@ -494,6 +620,7 @@ Current structured M&A deal context:
     memory_store.add_message(session.session_id, "user", deal_context)
 
     initial_state: BastionGraphState = {
+        "workflow_run_id": workflow_run_id,
         "session_id": session.session_id,
         "company_text": company_text_with_memory,
         "research_contexts": {},
@@ -525,4 +652,5 @@ Current structured M&A deal context:
         risk_analysis=final_state["risk_analysis"],
         investment_memo=investment_memo,
         report=report,
+        workflow_diagnostics=_build_workflow_diagnostics(final_state),
     )

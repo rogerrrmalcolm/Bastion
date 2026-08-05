@@ -10,7 +10,10 @@ from fastapi import FastAPI
 from fastapi import File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from agents.workflow import run_investment_banking_workflow
+from agents.workflow import (
+    get_diligence_graph_manifest,
+    run_investment_banking_workflow,
+)
 from gemini_client import call_gemini
 from memory import memory_store
 from schemas import (
@@ -20,6 +23,7 @@ from schemas import (
     ChatResponse,
     MemoryMessageResponse,
     SessionMemoryResponse,
+    WorkflowGraphManifest,
 )
 
 
@@ -74,6 +78,11 @@ app.add_middleware(
 @app.get("/")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "bastion-backend"}
+
+
+@app.get("/workflow/graph", response_model=WorkflowGraphManifest)
+def get_workflow_graph() -> WorkflowGraphManifest:
+    return get_diligence_graph_manifest()
 
 
 def _s3_client():

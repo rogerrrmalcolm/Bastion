@@ -40,6 +40,7 @@ class DiligenceGraphTests(unittest.TestCase):
         max_retrieval_attempts: int = 3,
     ) -> workflow.BastionGraphState:
         return {
+            "workflow_run_id": "test-workflow-run",
             "session_id": "test-session",
             "company_text": "Synthetic buyer and target context for graph testing.",
             "research_contexts": {},
@@ -290,6 +291,126 @@ class DiligenceGraphTests(unittest.TestCase):
         self.assertIn("provider unavailable", received_market_packet)
         self.assertEqual(result["report"], "report-output")
         self.assertTrue(result["workflow_warnings"])
+
+    def test_manifest_matches_compiled_graph_topology(self):
+        manifest = workflow.get_diligence_graph_manifest()
+        compiled_graph = workflow.build_diligence_graph().get_graph()
+
+        def public_name(name):
+            return {
+                "__start__": "START",
+                "__end__": "END",
+            }.get(name, name)
+
+        actual_edges = {
+            (
+                public_name(edge.source),
+                public_name(edge.target),
+                edge.conditional,
+            )
+            for edge in compiled_graph.edges
+        }
+        documented_edges = {
+            (edge.source, edge.target, edge.condition is not None)
+            for edge in manifest.edges
+        }
+
+        self.assertEqual(actual_edges, documented_edges)
+        self.assertFalse(manifest.checkpointing_enabled)
+        self.assertEqual(manifest.checkpoint_backend, "none")
+        self.assertEqual(
+            manifest.conversation_memory_backend,
+            "in_process_session_store",
+        )
+        self.assertEqual(manifest.state_scope, "single_run")
+
+    def test_diagnostics_explain_state_and_retry_outcomes(self):
+        diagnostics = workflow._build_workflow_diagnostics(
+            {
+                "workflow_run_id": "diagnostics-run",
+                "execution_trace": ["orchestrator_agent", "market_research:1"],
+                "retrieval_attempts": {"market_agent": 1},
+                "retrieval_statuses": {"market_agent": "succeeded"},
+                "workflow_warnings": [],
+            }
+        )
+
+        self.assertEqual(diagnostics.workflow_run_id, "diagnostics-run")
+        self.assertEqual(diagnostics.state_scope, "single_run")
+        self.assertFalse(diagnostics.checkpointing_enabled)
+        self.assertEqual(diagnostics.checkpoint_backend, "none")
+        self.assertEqual(
+            diagnostics.conversation_memory_backend,
+            "in_process_session_store",
+        )
+        self.assertEqual(diagnostics.retrieval_attempts["market_agent"], 1)
+        self.assertEqual(
+            diagnostics.retrieval_statuses["market_agent"],
+            "succeeded",
+        )
+
+    def test_reused_graph_keeps_invocation_state_isolated(self):
+        graph = workflow.build_diligence_graph()
+        research_builders = {
+            agent_name: (lambda text, name=agent_name: FakeResearchContext(name))
+            for agent_name in workflow.SPECIALIST_OUTPUT_KEYS
+        }
+
+        with (
+            patch.object(
+                workflow,
+                "run_orchestrator_agent",
+                return_value=workflow.DEFAULT_PLAN,
+            ),
+            patch.dict(
+                workflow.RESEARCH_BUILDERS,
+                research_builders,
+                clear=True,
+            ),
+            patch.dict(
+                workflow.SPECIALIST_RUNNERS,
+                {
+                    "market_agent": lambda *_: "market-output",
+                    "financial_agent": lambda *_: "financial-output",
+                    "risk_agent": lambda *_: "risk-output",
+                },
+                clear=True,
+            ),
+            patch.dict(
+                workflow.SYNTHESIS_RUNNERS,
+                {"memo_agent": lambda **_: "memo-output"},
+                clear=True,
+            ),
+            patch.object(
+                workflow,
+                "build_report_package",
+                return_value="report-output",
+            ),
+        ):
+            first_state = self._initial_state()
+            first_state["workflow_run_id"] = "first-run"
+            first_state["company_text"] = "first isolated deal"
+            first_result = graph.invoke(
+                first_state,
+                config={"recursion_limit": workflow.GRAPH_RECURSION_LIMIT},
+            )
+
+            second_state = self._initial_state()
+            second_state["workflow_run_id"] = "second-run"
+            second_state["company_text"] = "second isolated deal"
+            second_result = graph.invoke(
+                second_state,
+                config={"recursion_limit": workflow.GRAPH_RECURSION_LIMIT},
+            )
+
+        self.assertEqual(first_result["workflow_run_id"], "first-run")
+        self.assertEqual(first_result["company_text"], "first isolated deal")
+        self.assertEqual(second_result["workflow_run_id"], "second-run")
+        self.assertEqual(second_result["company_text"], "second isolated deal")
+        self.assertEqual(
+            first_result["execution_trace"],
+            second_result["execution_trace"],
+        )
 
 
 if __name__ == "__main__":

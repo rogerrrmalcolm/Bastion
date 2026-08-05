@@ -809,6 +809,75 @@ class InvestmentMemo(BaseModel):
     overall_confidence: Literal["low", "medium", "high"]
 
 
+class WorkflowDiagnostics(BaseModel):
+    workflow_run_id: str = Field(
+        description="Unique correlation id for this isolated analysis run."
+    )
+    state_scope: Literal["single_run"] = Field(
+        default="single_run",
+        description=(
+            "LangGraph state is shared by nodes during one workflow invocation."
+        ),
+    )
+    checkpointing_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether graph state is persisted beyond the current invocation."
+        ),
+    )
+    checkpoint_backend: Literal["none"] = "none"
+    conversation_memory_backend: Literal["in_process_session_store"] = Field(
+        default="in_process_session_store",
+        description=(
+            "Conversation memory is stored separately from per-run graph state."
+        ),
+    )
+    execution_trace: list[str] = Field(
+        default_factory=list,
+        description="Nodes completed during this workflow run, in execution order.",
+    )
+    retrieval_attempts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Research-node attempts by specialist agent.",
+    )
+    retrieval_statuses: dict[
+        str,
+        Literal["pending", "retrying", "succeeded", "exhausted"],
+    ] = Field(
+        default_factory=dict,
+        description="Final research status for each specialist agent.",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal workflow limitations or fallback events.",
+    )
+
+
+class WorkflowGraphNode(BaseModel):
+    name: str
+    kind: Literal["control", "agent", "research", "deterministic"]
+    description: str
+
+
+class WorkflowGraphEdge(BaseModel):
+    source: str
+    target: str
+    condition: str | None = None
+
+
+class WorkflowGraphManifest(BaseModel):
+    name: str = "bastion_diligence_graph"
+    state_model: str = "BastionGraphState"
+    state_scope: Literal["single_run"] = "single_run"
+    checkpointing_enabled: bool = False
+    checkpoint_backend: Literal["none"] = "none"
+    conversation_memory_backend: Literal["in_process_session_store"] = (
+        "in_process_session_store"
+    )
+    nodes: list[WorkflowGraphNode]
+    edges: list[WorkflowGraphEdge]
+
+
 class AnalyzeResponse(BaseModel):
     session_id: str
     orchestration_plan: OrchestrationPlan
@@ -817,6 +886,7 @@ class AnalyzeResponse(BaseModel):
     risk_analysis: RiskAnalysis
     investment_memo: InvestmentMemo
     report: ReportPackage
+    workflow_diagnostics: WorkflowDiagnostics
 
 
 class ChatRequest(BaseModel):

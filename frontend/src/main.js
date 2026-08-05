@@ -1,5 +1,31 @@
 import './style.css'
-import * as THREE from 'three'
+import {
+  AmbientLight,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
+  CircleGeometry,
+  Clock,
+  Color,
+  FogExp2,
+  Group,
+  Line,
+  LineBasicMaterial,
+  LineLoop,
+  Mesh,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Points,
+  PointsMaterial,
+  Scene,
+  Sprite,
+  SpriteMaterial,
+  SRGBColorSpace,
+  TorusGeometry,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from 'three'
 
 const app = document.querySelector('#app')
 
@@ -233,13 +259,13 @@ const currentAgent = document.querySelector('#current-agent')
 const workflowStep = document.querySelector('#route-cost')
 const responseMode = document.querySelector('#response-mode')
 
-const scene = new THREE.Scene()
-scene.fog = new THREE.FogExp2(0xf4efe6, 0.015)
+const scene = new Scene()
+scene.fog = new FogExp2(0xf4efe6, 0.015)
 
-const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 220)
+const camera = new PerspectiveCamera(58, 1, 0.1, 220)
 camera.position.set(0, 0, 9)
 
-const renderer = new THREE.WebGLRenderer({
+const renderer = new WebGLRenderer({
   antialias: true,
   alpha: false,
   powerPreference: 'high-performance',
@@ -248,8 +274,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.setClearColor(0xf4efe6, 1)
 sceneRoot.appendChild(renderer.domElement)
 
-const clock = new THREE.Clock()
-const pointer = new THREE.Vector2()
+const clock = new Clock()
+const pointer = new Vector2()
 const tunnelLength = 170
 const nearLimit = 12
 const farLimit = -tunnelLength
@@ -286,12 +312,12 @@ const workspaceTransition = {
 }
 
 const palette = {
-  espresso: new THREE.Color(0x2b1a12),
-  brown: new THREE.Color(0x5b3a29),
-  copper: new THREE.Color(0x9b6a35),
-  sand: new THREE.Color(0xd7c4aa),
-  ivory: new THREE.Color(0xf4efe6),
-  white: new THREE.Color(0xffffff),
+  espresso: new Color(0x2b1a12),
+  brown: new Color(0x5b3a29),
+  copper: new Color(0x9b6a35),
+  sand: new Color(0xd7c4aa),
+  ivory: new Color(0xf4efe6),
+  white: new Color(0xffffff),
 }
 
 const agentGraph = {
@@ -611,11 +637,11 @@ function makeStarField() {
     colors[i * 3 + 2] = color.b
   }
 
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new BufferAttribute(positions, 3))
+  geometry.setAttribute('color', new BufferAttribute(colors, 3))
 
-  const material = new THREE.PointsMaterial({
+  const material = new PointsMaterial({
     size: 0.05,
     vertexColors: true,
     transparent: true,
@@ -623,11 +649,11 @@ function makeStarField() {
     depthWrite: false,
   })
 
-  return new THREE.Points(geometry, material)
+  return new Points(geometry, material)
 }
 
 function makeTunnelRings() {
-  const group = new THREE.Group()
+  const group = new Group()
   const ringCount = 72
   const segmentCount = 128
 
@@ -639,22 +665,22 @@ function makeTunnelRings() {
     for (let j = 0; j <= segmentCount; j += 1) {
       const angle = (j / segmentCount) * Math.PI * 2
       const ripple = Math.sin(angle * 5 + i * 0.35) * 0.13
-      points.push(new THREE.Vector3(
+      points.push(new Vector3(
         Math.cos(angle) * (radius + ripple),
         Math.sin(angle) * (radius + ripple),
         z,
       ))
     }
 
-    const geometry = new THREE.BufferGeometry().setFromPoints(points)
+    const geometry = new BufferGeometry().setFromPoints(points)
     const hueColor = i % 4 === 0 ? 0x5b3a29 : i % 4 === 1 ? 0x9b6a35 : i % 4 === 2 ? 0x2b1a12 : 0xd7c4aa
-    const material = new THREE.LineBasicMaterial({
+    const material = new LineBasicMaterial({
       color: hueColor,
       transparent: true,
       opacity: 0.28,
       depthWrite: false,
     })
-    const ring = new THREE.LineLoop(geometry, material)
+    const ring = new LineLoop(geometry, material)
     ring.userData.baseZ = z
     ring.userData.speed = randomBetween(9, 13)
     ring.userData.pathPhase = randomBetween(-0.4, 0.4)
@@ -686,8 +712,8 @@ function makeSymbolTexture(label, color = '#5b3a29') {
   context.fillStyle = '#2b1a12'
   context.fillText(label, 128, 66)
 
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
   return texture
 }
 
@@ -705,19 +731,19 @@ function symbolPosition(z = randomBetween(-128, -26)) {
 }
 
 function makeFinanceSymbols() {
-  const group = new THREE.Group()
+  const group = new Group()
   const labels = ['$', 'M&A', 'DCF', 'IRR', 'IPO', 'NWC', 'EV', 'EBITDA', 'WACC', 'LOI', 'ROI']
   const colors = ['#5b3a29', '#9b6a35', '#2b1a12', '#d7c4aa']
 
   for (let i = 0; i < 62; i += 1) {
     const label = labels[i % labels.length]
-    const material = new THREE.SpriteMaterial({
+    const material = new SpriteMaterial({
       map: makeSymbolTexture(label, colors[i % colors.length]),
       transparent: true,
       opacity: 0.86,
       depthWrite: false,
     })
-    const sprite = new THREE.Sprite(material)
+    const sprite = new Sprite(material)
     const position = symbolPosition(randomBetween(-104, -8))
     sprite.position.set(position.x, position.y, position.z)
     sprite.scale.setScalar(randomBetween(0.82, 1.45))
@@ -734,27 +760,27 @@ function makeFinanceSymbols() {
 }
 
 function makeArrivalGate() {
-  const group = new THREE.Group()
+  const group = new Group()
 
-  const torus = new THREE.Mesh(
-    new THREE.TorusGeometry(2.25, 0.035, 16, 180),
-    new THREE.MeshBasicMaterial({
+  const torus = new Mesh(
+    new TorusGeometry(2.25, 0.035, 16, 180),
+    new MeshBasicMaterial({
       color: 0x5b3a29,
       transparent: true,
       opacity: 0.85,
     }),
   )
-  const inner = new THREE.Mesh(
-    new THREE.TorusGeometry(1.66, 0.018, 12, 180),
-    new THREE.MeshBasicMaterial({
+  const inner = new Mesh(
+    new TorusGeometry(1.66, 0.018, 12, 180),
+    new MeshBasicMaterial({
       color: 0x9b6a35,
       transparent: true,
       opacity: 0.7,
     }),
   )
-  const halo = new THREE.Mesh(
-    new THREE.CircleGeometry(1.82, 96),
-    new THREE.MeshBasicMaterial({
+  const halo = new Mesh(
+    new CircleGeometry(1.82, 96),
+    new MeshBasicMaterial({
       color: 0xf4efe6,
       transparent: true,
       opacity: 0.42,
@@ -787,28 +813,28 @@ function makeBeaconLabelTexture(label) {
   context.fillStyle = '#2b1a12'
   context.fillText(label, 256, 82)
 
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
   return texture
 }
 
 function makeDealBeacon(label, x, color) {
-  const group = new THREE.Group()
-  const ringMaterial = new THREE.MeshBasicMaterial({
+  const group = new Group()
+  const ringMaterial = new MeshBasicMaterial({
     color,
     transparent: true,
     opacity: 0.72,
     depthWrite: false,
   })
-  const coreMaterial = new THREE.MeshBasicMaterial({
+  const coreMaterial = new MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
     opacity: 0.46,
     depthWrite: false,
   })
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.035, 14, 96), ringMaterial)
-  const inner = new THREE.Mesh(new THREE.CircleGeometry(0.54, 64), coreMaterial)
-  const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  const ring = new Mesh(new TorusGeometry(0.82, 0.035, 14, 96), ringMaterial)
+  const inner = new Mesh(new CircleGeometry(0.54, 64), coreMaterial)
+  const labelSprite = new Sprite(new SpriteMaterial({
     map: makeBeaconLabelTexture(label),
     transparent: true,
     opacity: 0.84,
@@ -824,16 +850,16 @@ function makeDealBeacon(label, x, color) {
 }
 
 function makeDealComparisonBeacons() {
-  const group = new THREE.Group()
+  const group = new Group()
   const buyer = makeDealBeacon('BUYER', -2.8, 0x5b3a29)
   const target = makeDealBeacon('TARGET', 2.8, 0x9b6a35)
-  const bridgeGeometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-1.92, 0, -0.03),
-    new THREE.Vector3(1.92, 0, -0.03),
+  const bridgeGeometry = new BufferGeometry().setFromPoints([
+    new Vector3(-1.92, 0, -0.03),
+    new Vector3(1.92, 0, -0.03),
   ])
-  const bridge = new THREE.Line(
+  const bridge = new Line(
     bridgeGeometry,
-    new THREE.LineBasicMaterial({
+    new LineBasicMaterial({
       color: 0xd7c4aa,
       transparent: true,
       opacity: 0.38,
@@ -854,7 +880,7 @@ const financeSymbols = makeFinanceSymbols()
 const dealBeacons = makeDealComparisonBeacons()
 scene.add(stars, rings, arrivalGate, financeSymbols, dealBeacons)
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.56)
+const ambient = new AmbientLight(0xffffff, 0.56)
 scene.add(ambient)
 
 function markArrived() {
