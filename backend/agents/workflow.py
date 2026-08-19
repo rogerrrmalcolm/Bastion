@@ -12,6 +12,7 @@ from agents.market_agent import run_market_agent
 from agents.memo_agent import run_memo_agent
 from agents.orchestrator_agent import DEFAULT_PLAN, run_orchestrator_agent
 from agents.risk_agent import run_risk_agent
+from document_retrieval import build_agent_document_contexts
 from memory import memory_store
 from report_service import build_report_package
 from schemas import (
@@ -47,6 +48,7 @@ class BastionGraphState(TypedDict, total=False):
     workflow_run_id: str
     session_id: str
     company_text: str
+    document_source_text: str
     orchestration_plan: OrchestrationPlan
     market_analysis: MarketAnalysis
     financial_analysis: FinancialAnalysis
@@ -54,6 +56,8 @@ class BastionGraphState(TypedDict, total=False):
     investment_memo: InvestmentMemo
     report: ReportPackage
     research_contexts: dict[str, str]
+    document_contexts: dict[str, str]
+    document_retrieval_stats: dict[str, int]
     retrieval_attempts: dict[str, int]
     retrieval_statuses: dict[str, ResearchStatus]
     retrieval_errors: dict[str, str]
@@ -95,6 +99,11 @@ WORKFLOW_GRAPH_MANIFEST = WorkflowGraphManifest(
             name="orchestrator_agent",
             kind="agent",
             description="Builds the ordered diligence plan and tool assignments.",
+        ),
+        WorkflowGraphNode(
+            name="document_retrieval",
+            kind="research",
+            description="Embeds uploaded S3 PDFs and selects agent-specific excerpts.",
         ),
         WorkflowGraphNode(
             name="market_research",
@@ -144,7 +153,8 @@ WORKFLOW_GRAPH_MANIFEST = WorkflowGraphManifest(
     ],
     edges=[
         WorkflowGraphEdge(source="START", target="orchestrator_agent"),
-        WorkflowGraphEdge(source="orchestrator_agent", target="market_research"),
+        WorkflowGraphEdge(source="orchestrator_agent", target="document_retrieval"),
+        WorkflowGraphEdge(source="document_retrieval", target="market_research"),
         WorkflowGraphEdge(
             source="market_research",
             target="market_research",
@@ -289,6 +299,31 @@ def _run_orchestrator_node(state: BastionGraphState) -> dict[str, object]:
     return {
         "orchestration_plan": plan,
         "execution_trace": ["orchestrator_agent"],
+        "workflow_warnings": warnings,
+    }
+
+
+def _run_document_retrieval_node(state: BastionGraphState) -> dict[str, object]:
+    logger.info("Starting uploaded-document embedding retrieval")
+    try:
+        contexts, stats = build_agent_document_contexts(
+            state.get("document_source_text", state["company_text"]),
+            state["orchestration_plan"],
+        )
+        warnings: list[str] = []
+    except Exception as error:
+        logger.exception("Uploaded-document embedding retrieval failed")
+        contexts = {}
+        stats = {"documents": 0, "pages": 0, "chunks": 0}
+        warnings = [
+            "Uploaded-document embedding retrieval was unavailable; specialists "
+            f"continued with supplied text and external research: {type(error).__name__}."
+        ]
+    logger.info("Finished uploaded-document embedding retrieval: %s", stats)
+    return {
+        "document_contexts": contexts,
+        "document_retrieval_stats": stats,
+        "execution_trace": ["document_retrieval"],
         "workflow_warnings": warnings,
     }
 
@@ -481,6 +516,13 @@ def _run_specialist_node(
         _prior_outputs_for_agent(state, agent_name),
     )
     research_context = state.get("research_contexts", {}).get(agent_name)
+    document_context = state.get("document_contexts", {}).get(agent_name)
+    if document_context:
+        research_context = (
+            "Uploaded-document excerpts selected by embedding retrieval:\n"
+            f"{document_context}\n\nExternal and deterministic research:\n"
+            f"{research_context or 'No additional research context available.'}"
+        )
 
     logger.info("Starting specialist agent: %s", agent_name)
     output = SPECIALIST_RUNNERS[agent_name](context, research_context)
@@ -551,6 +593,9 @@ def _build_workflow_diagnostics(
         execution_trace=list(state.get("execution_trace", [])),
         retrieval_attempts=dict(state.get("retrieval_attempts", {})),
         retrieval_statuses=dict(state.get("retrieval_statuses", {})),
+        document_retrieval_stats=dict(
+            state.get("document_retrieval_stats", {})
+        ),
         warnings=list(state.get("workflow_warnings", [])),
     )
 
@@ -558,6 +603,7 @@ def _build_workflow_diagnostics(
 def build_diligence_graph():
     graph = StateGraph(BastionGraphState)
     graph.add_node("orchestrator_agent", _run_orchestrator_node)
+    graph.add_node("document_retrieval", _run_document_retrieval_node)
     graph.add_node("market_research", _run_market_research_node)
     graph.add_node("market_agent", _run_market_node)
     graph.add_node("financial_research", _run_financial_research_node)
@@ -568,7 +614,8 @@ def build_diligence_graph():
     graph.add_node("build_report", _build_report_node)
 
     graph.add_edge(START, "orchestrator_agent")
-    graph.add_edge("orchestrator_agent", "market_research")
+    graph.add_edge("orchestrator_agent", "document_retrieval")
+    graph.add_edge("document_retrieval", "market_research")
     graph.add_conditional_edges(
         "market_research",
         _route_market_research,
@@ -623,7 +670,10 @@ Current structured M&A deal context:
         "workflow_run_id": workflow_run_id,
         "session_id": session.session_id,
         "company_text": company_text_with_memory,
+        "document_source_text": deal_context,
         "research_contexts": {},
+        "document_contexts": {},
+        "document_retrieval_stats": {},
         "retrieval_attempts": {},
         "retrieval_statuses": {},
         "retrieval_errors": {},

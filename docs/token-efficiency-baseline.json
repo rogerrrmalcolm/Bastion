@@ -1,0 +1,90 @@
+{
+  "generated_at_utc": "2026-08-15T17:52:57.569378+00:00",
+  "benchmark_id": "synthetic-buyer-target-v1",
+  "model": "gemini-2.5-flash",
+  "token_counter": "Deterministic estimate: ceil(UTF-8 request bytes / 4)",
+  "exact_model_token_count": false,
+  "scope": "Input-token benchmark for five model calls. Counts include Bastion's system instruction and each structured-response JSON schema. Fixed output fixtures are replayed as context where required but output-generation tokens, research API traffic, retries, and deterministic report building are outside the measured total.",
+  "methodology": {
+    "selective_shared_state": "Current Bastion topology. LangGraph state projects only the plan step and required upstream specialist outputs into each downstream prompt.",
+    "cumulative_transcript_replay": "Counterfactual stateless chat topology. Every downstream call receives the complete prior user/assistant transcript to reconstruct workflow context.",
+    "controls": "Both scenarios use the same model, system instruction, response schemas, five-call sequence, company context, research packets, and fixed outputs.",
+    "interpretation": "This isolates selective state projection versus cumulative transcript replay. It does not claim that LangGraph alone reduces tokens, and it is not a comparison against every possible hand-built stateless orchestrator."
+  },
+  "fixture": {
+    "company_context_characters": 1433,
+    "research_context_characters": {
+      "market_agent": 402,
+      "financial_agent": 864,
+      "risk_agent": 433
+    },
+    "fixed_output_characters": {
+      "orchestrator_agent": 6227,
+      "market_agent": 1905,
+      "financial_agent": 2307,
+      "risk_agent": 2899,
+      "memo_agent": 379
+    }
+  },
+  "scenarios": {
+    "selective_shared_state": {
+      "model_calls": 5,
+      "total_input_tokens": 22323,
+      "total_prompt_characters": 53289,
+      "per_call": {
+        "orchestrator_agent": {
+          "input_tokens": 1601,
+          "prompt_characters": 3673
+        },
+        "market_agent": {
+          "input_tokens": 4472,
+          "prompt_characters": 8671
+        },
+        "financial_agent": {
+          "input_tokens": 4970,
+          "prompt_characters": 12405
+        },
+        "risk_agent": {
+          "input_tokens": 6319,
+          "prompt_characters": 14164
+        },
+        "memo_agent": {
+          "input_tokens": 4961,
+          "prompt_characters": 14376
+        }
+      }
+    },
+    "cumulative_transcript_replay": {
+      "model_calls": 5,
+      "total_input_tokens": 46763,
+      "total_prompt_characters": 151047,
+      "per_call": {
+        "orchestrator_agent": {
+          "input_tokens": 1601,
+          "prompt_characters": 3673
+        },
+        "market_agent": {
+          "input_tokens": 7004,
+          "prompt_characters": 18796
+        },
+        "financial_agent": {
+          "input_tokens": 9676,
+          "prompt_characters": 31227
+        },
+        "risk_agent": {
+          "input_tokens": 13648,
+          "prompt_characters": 43481
+        },
+        "memo_agent": {
+          "input_tokens": 14834,
+          "prompt_characters": 53870
+        }
+      }
+    }
+  },
+  "comparison": {
+    "input_tokens_saved": 24440,
+    "input_token_reduction_percent": 52.26,
+    "shared_state_uses_percent_of_replay": 47.74
+  }
+}

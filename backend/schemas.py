@@ -847,6 +847,10 @@ class WorkflowDiagnostics(BaseModel):
         default_factory=dict,
         description="Final research status for each specialist agent.",
     )
+    document_retrieval_stats: dict[str, int] = Field(
+        default_factory=dict,
+        description="Uploaded documents, pages, and chunks processed for embeddings.",
+    )
     warnings: list[str] = Field(
         default_factory=list,
         description="Non-fatal workflow limitations or fallback events.",

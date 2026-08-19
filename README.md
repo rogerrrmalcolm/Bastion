@@ -2,9 +2,7 @@
 
 **A stateful, evidence-disciplined multi-agent system for M&A due diligence.**
 
-Bastion turns buyer context, target context, transaction assumptions, and deal-team questions into a structured investment-committee package. It models diligence as a typed LangGraph state machine: specialist agents own distinct workstreams, deterministic research nodes collect evidence, conditional edges handle bounded retries, and each invocation receives isolated shared state.
-
-The project is designed around a product question, not a chatbot demo: **how can a deal team accelerate first-pass diligence without hiding missing evidence or breaking the dependency chain between market, financial, risk, and recommendation work?**
+Bastion turns buyer context, target context, transaction assumptions, and uploaded PDFs into an investment-committee package. Its typed LangGraph state machine combines specialist agents, bounded research retries, S3 document storage, embedding-based retrieval, and isolated shared state.
 
 ## Product Surface
 
@@ -43,6 +41,7 @@ flowchart TB
     end
 
     subgraph Runtime["Diligence runtime"]
+        Documents["PDF extraction + Gemini embeddings"]
         Research["Deterministic research functions"]
         Agents["Structured Gemini agents"]
         Report["Deterministic report assembly"]
@@ -55,6 +54,7 @@ flowchart TB
     Session <--> Memory["Bounded in-process session memory"]
     Graph <--> State["Per-run BastionGraphState"]
     Upload --> S3[("Amazon S3")]
+    S3 --> Documents --> State
     Research --> PublicData["Market data + news endpoints"]
     Agents --> Gemini["Gemini 2.5 Flash on Vertex AI"]
 ```
@@ -68,7 +68,8 @@ Not every node is an agent. Bastion deliberately separates model-backed judgment
 ```mermaid
 flowchart LR
     START((START)) --> O["Orchestrator agent"]
-    O --> MR["Market research"]
+    O --> DR["Document embedding retrieval"]
+    DR --> MR["Market research"]
     MR -->|"transient failure; attempts remain"| MR
     MR -->|"success or exhausted"| M["Market agent"]
     M --> FR["Financial research"]
@@ -93,12 +94,13 @@ Parallelizing those agents would reduce wall-clock time but weaken the informati
 
 ## State Ownership and Memory
 
-The graph state is the shared working record the agents need. It exists for one invocation and does not require a database:
+The graph state is the shared working record for one invocation:
 
 ```mermaid
 flowchart LR
     Request["Analyze request"] --> State0["Initial BastionGraphState"]
     State0 --> O["orchestrator writes orchestration_plan"]
+    O --> Docs["retrieval writes agent-specific document_contexts"]
     O --> M["market writes market_analysis"]
     M --> F["financial reads market + writes financial_analysis"]
     F --> R["risk reads market + financial + writes risk_analysis"]
@@ -112,6 +114,7 @@ flowchart LR
 | Mechanism | Scope | Purpose | Current implementation |
 | --- | --- | --- | --- |
 | `BastionGraphState` | One analysis run | Typed working record shared by graph nodes | LangGraph `TypedDict` with reducers |
+| Embedding retrieval | One analysis run | Page-aware S3 excerpts selected per specialist | Gemini embeddings + cosine ranking |
 | Partial node update | One superstep | Add or replace fields without mutating global state | Dictionary returned by each node |
 | Session memory | Process lifetime | Bounded continuity for requests sharing `session_id` | Lock-protected in-memory store |
 | Checkpointer | Across restarts | Resume, replay, or time-travel | Deliberately not enabled |
@@ -140,6 +143,7 @@ The schema forces findings to distinguish source-backed evidence, tool results, 
 
 Current research functions include:
 
+- Page-aware PDF extraction and embedding retrieval from private S3 uploads.
 - Yahoo Finance chart data for detected tickers and public-market proxies.
 - Google News RSS searches for sector, transaction, regulatory, cyber, and competitive signals.
 - Deterministic extraction of financial and risk signals from supplied text.
@@ -147,15 +151,32 @@ Current research functions include:
 
 ## Performance Engineering
 
-The benchmark harness runs the full nine-node success path with synthetic agent/research outputs so it measures local orchestration and state-management overhead, not Gemini or internet latency.
+The benchmark harness runs the ten-node success path with synthetic agent/research outputs, measuring local orchestration and state overhead rather than Gemini, embedding, S3, or internet latency.
 
 | Local operation, 100 runs | p50 | p95 |
 | --- | ---: | ---: |
-| Nine-node state graph | 7.617 ms | 20.707 ms |
-| In-memory session-message write | 0.002 ms | 0.007 ms |
-| Bounded recent-context read | 0.006 ms | 0.007 ms |
+| Ten-node state graph | 1.896 ms | 2.746 ms |
+| In-memory session-message write | 0.001 ms | 0.003 ms |
+| Bounded recent-context read | 0.002 ms | 0.003 ms |
 
 Environment: Python 3.13.13 on Windows 11. The 100-run baseline demonstrates that local graph routing is small compared with the external model and research calls intentionally excluded from the harness. See [`docs/performance-baseline.json`](docs/performance-baseline.json) for the complete result and machine metadata.
+
+### Token-efficiency baseline
+
+LangGraph does not reduce tokens by itself. Bastion reduces context growth by using graph state as a typed working record and projecting only the plan step and upstream outputs required by the next agent. The benchmark compares that implementation with a counterfactual stateless chat that must replay its complete prior user/assistant transcript on every downstream call.
+
+| Agent input | Selective shared state | Transcript replay | Estimated reduction |
+| --- | ---: | ---: | ---: |
+| Orchestrator | 1,601 | 1,601 | 0.00% |
+| Market | 4,472 | 7,004 | 36.15% |
+| Financial | 4,970 | 9,676 | 48.64% |
+| Risk | 6,319 | 13,648 | 53.70% |
+| Memo | 4,961 | 14,834 | 66.56% |
+| **Five-call total** | **22,323** | **46,763** | **52.26%** |
+
+The fixed `synthetic-buyer-target-v1` fixture therefore uses an estimated **24,440 fewer input tokens**, with the advantage increasing downstream as transcript history accumulates. Both scenarios keep the same five calls, Gemini 2.5 Flash target, system instruction, response schemas, company context, research packets, and fixed outputs.
+
+These planning estimates use `ceil(UTF-8 request bytes / 4)` and include system instructions and response schemas. They exclude actual tokenization, outputs, retries, and live research. See [`docs/token-efficiency-baseline.json`](docs/token-efficiency-baseline.json); the harness can also call Vertex AI `countTokens`.
 
 The production frontend build separates Bastion's 40.72 kB application chunk (13.29 kB gzip) from the 519.16 kB Three.js vendor chunk (129.80 kB gzip). That keeps application deployments small and allows browsers/CDNs to cache the rendering engine independently.
 
@@ -163,7 +184,9 @@ Performance decisions already represented in the code:
 
 - A lock-protected in-memory session store avoids adding database latency before durable memory is a product requirement.
 - Independent quote/news fetches run concurrently while dependency-heavy agents remain sequential.
+- Typed state projects only required upstream outputs into each agent instead of replaying the complete workflow transcript.
 - Agent handoff payloads and session context have explicit character bounds to control token growth.
+- Vertex client creation is deferred until the first model operation, so local graph inspection and prompt-only tests do not resolve cloud credentials.
 - Network calls use finite timeouts and result caps.
 - Deterministic calculation and report nodes avoid unnecessary model calls.
 - Rolldown vendor grouping isolates Three.js from frequently changing application code.
@@ -172,6 +195,9 @@ Reproduce the baseline:
 
 ```powershell
 .\.venv\Scripts\python.exe backend\benchmarks\benchmark_orchestration.py --iterations 100
+.\.venv\Scripts\python.exe backend\benchmarks\benchmark_token_efficiency.py --counter estimate --output docs\token-efficiency-baseline.json
+# Exact Gemini counts; sends the synthetic fixture to the configured Vertex project.
+.\.venv\Scripts\python.exe backend\benchmarks\benchmark_token_efficiency.py --counter gemini
 ```
 
 ## API
@@ -192,7 +218,7 @@ FastAPI also exposes generated OpenAPI documentation at `/docs` when the backend
 - **Backend:** Python, FastAPI, Pydantic, LangGraph
 - **Reasoning:** Google Gemini 2.5 Flash through Vertex AI
 - **State:** typed per-run LangGraph state plus bounded in-process session memory
-- **Research:** deterministic Python tools, Yahoo Finance chart endpoint, Google News RSS
+- **Research:** S3 PDF extraction, Gemini embeddings, deterministic tools, Yahoo Finance, Google News RSS
 - **Object storage:** Amazon S3 via Boto3
 - **Frontend:** Vite, vanilla JavaScript, Three.js
 
@@ -207,6 +233,7 @@ Bastion/
 |   |-- tools/               # Market, financial, and risk research functions
 |   |-- main.py              # FastAPI routes
 |   |-- memory.py            # Bounded process-local session store
+|   |-- document_retrieval.py # PDF chunking, embedding, and ranking
 |   |-- report_service.py    # Deterministic report normalization
 |   `-- schemas.py           # Cross-agent and API contracts
 |-- docs/
@@ -255,6 +282,7 @@ VITE_API_BASE_URL=https://your-backend.example.com
 | `GOOGLE_GENAI_USE_VERTEXAI` | Yes | Set `true` for Vertex AI |
 | `GOOGLE_CLOUD_PROJECT` | Yes | Google Cloud project ID |
 | `GOOGLE_CLOUD_LOCATION` | Yes | Vertex AI region |
+| `GEMINI_EMBEDDING_MODEL` | No | Defaults to `gemini-embedding-001` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Deployment-dependent | Service-account file path; use workload identity in production where possible |
 | `S3_BUCKET` | For PDF upload | Destination bucket |
 | `AWS_REGION` | For PDF upload | Bucket region |
@@ -270,22 +298,16 @@ cd frontend
 npm run build
 ```
 
-The tests verify agent order and upstream-state handoffs, conditional retry cycles, retry exhaustion, graph-manifest parity, repeated-run isolation, session isolation, context bounds, and API behavior.
+Tests cover agent order, embedding ranking and handoffs, retries, graph parity, run/session isolation, context bounds, and API behavior.
 
 ## Current Boundaries
 
-- PDF files are uploaded to S3 and their URIs are added to deal context. PDF extraction, chunking, citation-level retrieval, and `deal_id` indexing are not wired yet.
+- PDF files stay in S3; page-aware chunks and embeddings are request-scoped, not persisted or reused. Scanned PDFs require OCR, and `deal_id` indexing is not wired yet.
 - Graph state and session history are process-local. Restarting the backend discards them; pause/resume and crash recovery are not current product features.
 - A durable checkpointer or database should be selected only when those requirements exist, with retention, encryption, tenant isolation, and multi-worker behavior designed first.
 - Authentication and tenant authorization are not implemented. Supabase environment variables may exist in local configuration, but no Supabase code path is currently active.
 - The frontend dashboard stores summaries in browser `localStorage`; it is not a shared team pipeline.
 - S3 access is server-side, but bucket privacy, encryption, lifecycle, IAM, malware scanning, and document deletion remain deployment responsibilities.
-
-These boundaries are intentional in the current prototype: the system demonstrates workflow correctness, typed state, evidence-aware failure handling, and measurable local overhead without representing unnecessary infrastructure as production-ready.
-
-## Further Reading
-
-See [`docs/langgraph-workflow.md`](docs/langgraph-workflow.md) for the detailed state/memory model, field ownership, routing semantics, and observability contract.
 
 ## License
 

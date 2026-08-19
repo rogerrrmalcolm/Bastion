@@ -24,7 +24,8 @@ The graph is not a memory database. It is a state-transition runtime. Bastion cu
 ```mermaid
 flowchart LR
     START --> O["orchestrator_agent"]
-    O --> MR["market_research"]
+    O --> D["document_retrieval"]
+    D --> MR["market_research"]
     MR -->|"retry"| MR
     MR -->|"success or exhausted"| M["market_agent"]
     M --> FR["financial_research"]
@@ -46,6 +47,7 @@ The specialist path remains sequential because its outputs are causally dependen
 
 - `workflow_run_id`, `session_id`, and current deal context.
 - The validated `OrchestrationPlan`.
+- Agent-specific document excerpts and extraction statistics from S3 PDFs.
 - Serialized research packets plus attempt, status, and error maps.
 - Typed market, financial, risk, memo, and report outputs.
 - Append-only execution trace and workflow warnings.
@@ -55,6 +57,7 @@ Most fields have one logical writer:
 | Node | Reads | Writes |
 | --- | --- | --- |
 | `orchestrator_agent` | Deal context | `orchestration_plan` |
+| `document_retrieval` | Plan, S3 URIs | `document_contexts`, retrieval statistics |
 | `*_research` | Deal context, attempt maps | Research packet, attempt/status/error maps |
 | `market_agent` | Plan, market packet, deal context | `market_analysis` |
 | `financial_agent` | Plan, market output, financial packet | `financial_analysis` |
@@ -105,6 +108,7 @@ Every successful `/analyze` response includes:
 - `execution_trace`
 - `retrieval_attempts`
 - `retrieval_statuses`
+- `document_retrieval_stats`
 - `warnings`
 - explicit `checkpointing_enabled: false`
 

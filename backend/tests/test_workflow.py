@@ -43,7 +43,10 @@ class DiligenceGraphTests(unittest.TestCase):
             "workflow_run_id": "test-workflow-run",
             "session_id": "test-session",
             "company_text": "Synthetic buyer and target context for graph testing.",
+            "document_source_text": "Synthetic current-deal context.",
             "research_contexts": {},
+            "document_contexts": {},
+            "document_retrieval_stats": {},
             "retrieval_attempts": {},
             "retrieval_statuses": {},
             "retrieval_errors": {},
@@ -183,6 +186,7 @@ class DiligenceGraphTests(unittest.TestCase):
             result["execution_trace"],
             [
                 "orchestrator_agent",
+                "document_retrieval",
                 "market_research:1",
                 "market_agent",
                 "financial_research:1",
@@ -193,6 +197,51 @@ class DiligenceGraphTests(unittest.TestCase):
                 "build_report",
             ],
         )
+
+    def test_embedding_retrieval_context_is_shared_with_each_specialist(self):
+        received_research: dict[str, str] = {}
+
+        def specialist(agent_name):
+            def run(_, research_context):
+                received_research[agent_name] = research_context
+                return f"{agent_name}-output"
+
+            return run
+
+        document_contexts = {
+            "market_agent": "Market excerpt from buyer.pdf, page 2",
+            "financial_agent": "Financial excerpt from target.pdf, page 7",
+            "risk_agent": "Risk excerpt from target.pdf, page 11",
+        }
+        with patch.object(
+            workflow,
+            "build_agent_document_contexts",
+            return_value=(
+                document_contexts,
+                {"documents": 2, "pages": 18, "chunks": 24},
+            ),
+        ):
+            result = self._invoke_with_fakes(
+                research_builders={
+                    agent_name: (lambda _, name=agent_name: FakeResearchContext(name))
+                    for agent_name in workflow.SPECIALIST_OUTPUT_KEYS
+                },
+                specialist_runners={
+                    agent_name: specialist(agent_name)
+                    for agent_name in workflow.SPECIALIST_OUTPUT_KEYS
+                },
+                memo_runner=lambda **_: "memo-output",
+                report_builder=lambda *_: "report-output",
+                state=self._initial_state(),
+            )
+
+        self.assertEqual(result["document_retrieval_stats"]["chunks"], 24)
+        for agent_name, excerpt in document_contexts.items():
+            self.assertIn(excerpt, received_research[agent_name])
+            self.assertIn(
+                "selected by embedding retrieval",
+                received_research[agent_name],
+            )
 
     def test_failed_research_cycles_before_specialist_runs(self):
         market_attempts = 0
@@ -331,6 +380,11 @@ class DiligenceGraphTests(unittest.TestCase):
                 "execution_trace": ["orchestrator_agent", "market_research:1"],
                 "retrieval_attempts": {"market_agent": 1},
                 "retrieval_statuses": {"market_agent": "succeeded"},
+                "document_retrieval_stats": {
+                    "documents": 2,
+                    "pages": 18,
+                    "chunks": 24,
+                },
                 "workflow_warnings": [],
             }
         )
@@ -348,6 +402,7 @@ class DiligenceGraphTests(unittest.TestCase):
             diagnostics.retrieval_statuses["market_agent"],
             "succeeded",
         )
+        self.assertEqual(diagnostics.document_retrieval_stats["chunks"], 24)
 
     def test_reused_graph_keeps_invocation_state_isolated(self):
         graph = workflow.build_diligence_graph()

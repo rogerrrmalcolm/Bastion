@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import time
 from collections.abc import Callable
+from functools import lru_cache
 from typing import TypeVar
 
 from dotenv import load_dotenv
@@ -13,6 +14,10 @@ import httpx
 from pydantic import BaseModel
 
 DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_EMBEDDING_MODEL = os.getenv(
+    "GEMINI_EMBEDDING_MODEL",
+    "gemini-embedding-001",
+)
 DEFAULT_TEMPERATURE = 0.15
 MAX_RETRY_ATTEMPTS = 5
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -41,9 +46,14 @@ def _configure_google_credentials() -> None:
 
 _configure_google_credentials()
 
-client = genai.Client()
 StructuredResponse = TypeVar("StructuredResponse", bound=BaseModel)
 GeminiResponse = TypeVar("GeminiResponse")
+
+
+@lru_cache(maxsize=1)
+def get_gemini_client() -> genai.Client:
+    """Create the network client only when a model operation is requested."""
+    return genai.Client()
 
 
 def _with_gemini_retries(operation: Callable[[], GeminiResponse]) -> GeminiResponse:
@@ -82,12 +92,39 @@ def _generate_content(
         "config": generation_config,
     }
 
-    return _with_gemini_retries(lambda: client.models.generate_content(**request))
+    return _with_gemini_retries(
+        lambda: get_gemini_client().models.generate_content(**request)
+    )
 
 
 def call_gemini(prompt: str, model: str = DEFAULT_MODEL) -> str:
     response = _generate_content(model=model, contents=prompt)
     return response.text or ""
+
+
+def call_gemini_embeddings(
+    texts: list[str],
+    *,
+    task_type: str,
+    model: str = DEFAULT_EMBEDDING_MODEL,
+) -> list[list[float]]:
+    if not texts:
+        return []
+
+    response = _with_gemini_retries(
+        lambda: get_gemini_client().models.embed_content(
+            model=model,
+            contents=texts,
+            config={"task_type": task_type},
+        )
+    )
+    embeddings = response.embeddings or []
+    if len(embeddings) != len(texts):
+        raise RuntimeError(
+            "Gemini returned an unexpected number of embeddings: "
+            f"expected {len(texts)}, received {len(embeddings)}."
+        )
+    return [list(embedding.values or []) for embedding in embeddings]
 
 
 def call_gemini_structured(

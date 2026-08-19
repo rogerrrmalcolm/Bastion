@@ -55,7 +55,10 @@ def _initial_state(run_id: str) -> workflow.BastionGraphState:
         "workflow_run_id": run_id,
         "session_id": "benchmark-session",
         "company_text": "Synthetic buyer and target context for orchestration timing.",
+        "document_source_text": "Synthetic current-deal context.",
         "research_contexts": {},
+        "document_contexts": {},
+        "document_retrieval_stats": {},
         "retrieval_attempts": {},
         "retrieval_statuses": {},
         "retrieval_errors": {},
@@ -159,7 +162,7 @@ def run_benchmark(iterations: int) -> dict[str, object]:
             "Gemini, market-data, news, S3, and internet calls. Results are not "
             "end-to-end production latency."
         ),
-        "graph": {"nine_node_state_graph": benchmark_graph(iterations)},
+        "graph": {"ten_node_state_graph": benchmark_graph(iterations)},
         "session_memory": benchmark_session_memory(iterations),
     }
 
