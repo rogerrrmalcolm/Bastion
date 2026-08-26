@@ -33,7 +33,7 @@ flowchart TB
     subgraph API["FastAPI application"]
         Routes["Typed HTTP routes"]
         Upload["Server-side PDF upload"]
-        Session["Bounded session context"]
+        Session["Redis-backed session context"]
         Graph["Compiled LangGraph runtime"]
         Routes --> Session
         Routes --> Graph
@@ -51,8 +51,9 @@ flowchart TB
     UI -->|"POST /analyze"| Routes
     Intake -->|"multipart PDF"| Upload
     Graph <--> Runtime
-    Session <--> Memory["Bounded in-process session memory"]
+    Session <--> Memory[("Redis session memory")]
     Graph <--> State["Per-run BastionGraphState"]
+    Graph <--> Checkpoints[("PostgreSQL checkpoints")]
     Upload --> S3[("Amazon S3")]
     S3 --> Documents --> State
     Research --> PublicData["Market data + news endpoints"]
@@ -107,7 +108,7 @@ flowchart LR
     R --> Memo["memo reads all specialists + writes investment_memo"]
     Memo --> Report["deterministic report update"]
 
-    SessionID["session_id"] --> Memory["bounded process-local conversation memory"]
+    SessionID["session_id"] --> Memory["bounded Redis conversation memory"]
     Memory --> State0
 ```
 
@@ -116,13 +117,13 @@ flowchart LR
 | `BastionGraphState` | One analysis run | Typed working record shared by graph nodes | LangGraph `TypedDict` with reducers |
 | Embedding retrieval | One analysis run | Page-aware S3 excerpts selected per specialist | Gemini embeddings + cosine ranking |
 | Partial node update | One superstep | Add or replace fields without mutating global state | Dictionary returned by each node |
-| Session memory | Process lifetime | Bounded continuity for requests sharing `session_id` | Lock-protected in-memory store |
-| Checkpointer | Across restarts | Resume, replay, or time-travel | Deliberately not enabled |
+| Session memory | Configurable Redis TTL | Bounded continuity for requests sharing `session_id` | Redis lists with message caps and expiry |
+| Checkpointer | Across restarts | Durable graph snapshots for recovery, replay, and inspection | PostgreSQL `PostgresSaver` |
 | LangGraph Store | Across workflows | Searchable long-term memory | Not implemented |
 
 Every `/analyze` request generates a new `workflow_run_id` for correlation, while the graph invocation starts from a newly constructed state object. Tests invoke the same compiled graph repeatedly and verify that company context and run IDs do not leak between deals. Conversation memory is loaded separately, truncated to bounded character budgets, and cannot replace the current structured deal context.
 
-This is intentional scope control. Bastion currently needs agents to share findings *during* a workflow, which `StateGraph` already provides. A checkpointer should be added only when product requirements include pause/resume, crash recovery, human approval, replay, or long-running jobs.
+Each analysis uses its unique `workflow_run_id` as the LangGraph checkpoint thread, preventing separate analyses in the same user session from merging state. Conversation continuity remains independently keyed by `session_id` in Redis.
 
 ## Reliability Model
 
@@ -156,10 +157,8 @@ The benchmark harness runs the ten-node success path with synthetic agent/resear
 | Local operation, 100 runs | p50 | p95 |
 | --- | ---: | ---: |
 | Ten-node state graph | 1.896 ms | 2.746 ms |
-| In-memory session-message write | 0.001 ms | 0.003 ms |
-| Bounded recent-context read | 0.002 ms | 0.003 ms |
 
-Environment: Python 3.13.13 on Windows 11. The 100-run baseline demonstrates that local graph routing is small compared with the external model and research calls intentionally excluded from the harness. See [`docs/performance-baseline.json`](docs/performance-baseline.json) for the complete result and machine metadata.
+Environment: Python 3.13.13 on Windows 11. The 100-run baseline demonstrates that local graph routing is small compared with the external model and research calls intentionally excluded from the harness. The historical process-local memory measurements were removed after session storage moved to Redis; Redis latency must be re-baselined against the selected deployment. See [`docs/performance-baseline.json`](docs/performance-baseline.json) for the original result and machine metadata.
 
 ### Token-efficiency baseline
 
@@ -182,7 +181,8 @@ The production frontend build separates Bastion's 40.72 kB application chunk (13
 
 Performance decisions already represented in the code:
 
-- A lock-protected in-memory session store avoids adding database latency before durable memory is a product requirement.
+- Redis stores bounded, expiring session messages outside Python process memory.
+- PostgreSQL persists LangGraph checkpoints through a bounded connection pool so workflow state survives backend restarts.
 - Independent quote/news fetches run concurrently while dependency-heavy agents remain sequential.
 - Typed state projects only required upstream outputs into each agent instead of replaying the complete workflow transcript.
 - Agent handoff payloads and session context have explicit character bounds to control token growth.
@@ -208,7 +208,7 @@ Reproduce the baseline:
 | `POST` | `/analyze` | Run the typed diligence graph |
 | `POST` | `/chat` | Session-aware diligence chat |
 | `POST` | `/documents/upload` | Validate and upload a PDF through the backend to S3 |
-| `GET` | `/sessions/{session_id}/memory` | Inspect process-local conversation messages |
+| `GET` | `/sessions/{session_id}/memory` | Inspect Redis-backed conversation messages |
 | `GET` | `/workflow/graph` | Inspect the runtime node/edge manifest |
 
 FastAPI also exposes generated OpenAPI documentation at `/docs` when the backend is running.
@@ -217,7 +217,8 @@ FastAPI also exposes generated OpenAPI documentation at `/docs` when the backend
 
 - **Backend:** Python, FastAPI, Pydantic, LangGraph
 - **Reasoning:** Google Gemini 2.5 Flash through Vertex AI
-- **State:** typed per-run LangGraph state plus bounded in-process session memory
+- **State:** typed per-run LangGraph state, PostgreSQL checkpoints, Redis session memory, pgvector
+- **Evaluation:** DeepEval
 - **Research:** S3 PDF extraction, Gemini embeddings, deterministic tools, Yahoo Finance, Google News RSS
 - **Object storage:** Amazon S3 via Boto3
 - **Frontend:** Vite, vanilla JavaScript, Three.js
@@ -232,7 +233,8 @@ Bastion/
 |   |-- tests/               # Topology, retry, state-isolation, memory, API tests
 |   |-- tools/               # Market, financial, and risk research functions
 |   |-- main.py              # FastAPI routes
-|   |-- memory.py            # Bounded process-local session store
+|   |-- memory.py            # Bounded Redis session store
+|   |-- checkpointing.py     # Pooled PostgreSQL LangGraph checkpointer
 |   |-- document_retrieval.py # PDF chunking, embedding, and ranking
 |   |-- report_service.py    # Deterministic report normalization
 |   `-- schemas.py           # Cross-agent and API contracts
@@ -258,8 +260,11 @@ Copy-Item .env.example .env
 Configure `.env`, then start the API from the repository root:
 
 ```powershell
+.\.venv\Scripts\python.exe backend\checkpointing.py
 .\.venv\Scripts\python.exe -m uvicorn main:app --app-dir backend --reload
 ```
+
+Run the checkpoint setup command once per database deployment before starting the API.
 
 In a second terminal:
 
@@ -288,6 +293,13 @@ VITE_API_BASE_URL=https://your-backend.example.com
 | `AWS_REGION` | For PDF upload | Bucket region |
 | `S3_PREFIX` | No | Object-key prefix; defaults to `pdfs` |
 | `CORS_ORIGINS` | No | Comma-separated allowed frontend origins |
+| `REDIS_URL` | Yes | Shared Redis connection for bounded session memory |
+| `SESSION_TTL_SECONDS` | No | Session expiry; defaults to 86,400 seconds |
+| `SESSION_MAX_MESSAGES` | No | Maximum stored messages per session; defaults to 50 |
+| `DATABASE_URL` | Yes | PostgreSQL connection for durable LangGraph checkpoints |
+| `POSTGRES_POOL_MIN_SIZE` | No | Minimum checkpoint connection-pool size |
+| `POSTGRES_POOL_MAX_SIZE` | No | Maximum checkpoint connection-pool size |
+| `LANGGRAPH_STRICT_MSGPACK` | Yes | Restricts checkpoint deserialization to safe types |
 
 ## Verification
 
@@ -303,8 +315,8 @@ Tests cover agent order, embedding ranking and handoffs, retries, graph parity, 
 ## Current Boundaries
 
 - PDF files stay in S3; page-aware chunks and embeddings are request-scoped, not persisted or reused. Scanned PDFs require OCR, and `deal_id` indexing is not wired yet.
-- Graph state and session history are process-local. Restarting the backend discards them; pause/resume and crash recovery are not current product features.
-- A durable checkpointer or database should be selected only when those requirements exist, with retention, encryption, tenant isolation, and multi-worker behavior designed first.
+- Session history requires reachable Redis, and durable graph execution requires reachable PostgreSQL; startup configuration should use managed secrets.
+- Checkpoints are durable and isolated by workflow run, but the API does not yet expose pause/resume or replay controls.
 - Authentication and tenant authorization are not implemented. Supabase environment variables may exist in local configuration, but no Supabase code path is currently active.
 - The frontend dashboard stores summaries in browser `localStorage`; it is not a shared team pipeline.
 - S3 access is server-side, but bucket privacy, encryption, lifecycle, IAM, malware scanning, and document deletion remain deployment responsibilities.

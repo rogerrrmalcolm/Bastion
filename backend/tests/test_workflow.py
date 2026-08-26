@@ -365,11 +365,11 @@ class DiligenceGraphTests(unittest.TestCase):
         }
 
         self.assertEqual(actual_edges, documented_edges)
-        self.assertFalse(manifest.checkpointing_enabled)
-        self.assertEqual(manifest.checkpoint_backend, "none")
+        self.assertTrue(manifest.checkpointing_enabled)
+        self.assertEqual(manifest.checkpoint_backend, "postgresql")
         self.assertEqual(
             manifest.conversation_memory_backend,
-            "in_process_session_store",
+            "redis",
         )
         self.assertEqual(manifest.state_scope, "single_run")
 
@@ -391,11 +391,11 @@ class DiligenceGraphTests(unittest.TestCase):
 
         self.assertEqual(diagnostics.workflow_run_id, "diagnostics-run")
         self.assertEqual(diagnostics.state_scope, "single_run")
-        self.assertFalse(diagnostics.checkpointing_enabled)
-        self.assertEqual(diagnostics.checkpoint_backend, "none")
+        self.assertTrue(diagnostics.checkpointing_enabled)
+        self.assertEqual(diagnostics.checkpoint_backend, "postgresql")
         self.assertEqual(
             diagnostics.conversation_memory_backend,
-            "in_process_session_store",
+            "redis",
         )
         self.assertEqual(diagnostics.retrieval_attempts["market_agent"], 1)
         self.assertEqual(

@@ -19,11 +19,11 @@ class WorkflowApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["state_model"], "BastionGraphState")
         self.assertEqual(payload["state_scope"], "single_run")
-        self.assertFalse(payload["checkpointing_enabled"])
-        self.assertEqual(payload["checkpoint_backend"], "none")
+        self.assertTrue(payload["checkpointing_enabled"])
+        self.assertEqual(payload["checkpoint_backend"], "postgresql")
         self.assertEqual(
             payload["conversation_memory_backend"],
-            "in_process_session_store",
+            "redis",
         )
         self.assertIn(
             {

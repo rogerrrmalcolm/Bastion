@@ -16,7 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agents import workflow
-from memory import InMemorySessionStore
+from memory import RedisSessionStore
 
 
 class SyntheticResearchContext:
@@ -121,7 +121,7 @@ def benchmark_graph(iterations: int) -> dict[str, float]:
 
 
 def benchmark_session_memory(iterations: int) -> dict[str, object]:
-    store = InMemorySessionStore()
+    store = RedisSessionStore()
     session_id = "benchmark-session"
     store.get_or_create(session_id)
     write_samples_ms: list[float] = []

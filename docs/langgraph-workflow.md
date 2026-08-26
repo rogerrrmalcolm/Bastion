@@ -10,14 +10,15 @@ The graph is not a memory database. It is a state-transition runtime. Bastion cu
 
 | Concept | LangGraph meaning | Bastion implementation |
 | --- | --- | --- |
-| Graph | Node and transition topology | Compiled once as `DILIGENCE_GRAPH` |
+| Graph | Node and transition topology | Compiled once with a PostgreSQL checkpointer |
 | State | Working record shared during a run | `BastionGraphState` |
 | Node | Function that reads state and returns partial updates | Agents, research functions, report builder |
 | Edge | Permitted next transition | Fixed handoffs and conditional retry routes |
 | Reducer | Rule for combining an update with existing state | Append trace and warning lists with `operator.add` |
 | Checkpointer | State snapshots for resume or replay | Not enabled |
 | Store | Cross-thread, searchable long-term memory | Not implemented |
-| Session memory | Application-owned conversation context | Bounded in-process `memory_store` |
+| Session memory | Application-owned conversation context | Bounded, expiring Redis `memory_store` |
+| Checkpoints | Durable per-run graph snapshots | PostgreSQL `PostgresSaver` |
 
 ## Runtime Topology
 
@@ -78,7 +79,7 @@ LangGraph merges this partial update into the current state. The next node sees 
 
 ## Invocation Isolation
 
-The graph object is reusable; graph state is not. `/analyze` constructs a new initial dictionary for every request and calls `DILIGENCE_GRAPH.invoke(...)`. A generated `workflow_run_id` is used for correlation only, not persistence.
+The graph object is reusable; graph state is isolated per analysis. `/analyze` constructs a new initial dictionary and invokes the PostgreSQL-checkpointed graph with `workflow_run_id` as its LangGraph `thread_id`. This preserves every run across restarts without merging state between analyses that share a user session. Redis separately stores bounded conversation messages under `session_id`.
 
 Tests execute two deals through the same compiled graph and assert that run ID and company context stay isolated. There is no checkpointer, so completed state is returned to the caller and then released. Restarting the backend cannot recover an interrupted run.
 

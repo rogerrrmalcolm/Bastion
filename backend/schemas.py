@@ -820,14 +820,14 @@ class WorkflowDiagnostics(BaseModel):
         ),
     )
     checkpointing_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Whether graph state is persisted beyond the current invocation."
         ),
     )
-    checkpoint_backend: Literal["none"] = "none"
-    conversation_memory_backend: Literal["in_process_session_store"] = Field(
-        default="in_process_session_store",
+    checkpoint_backend: Literal["postgresql"] = "postgresql"
+    conversation_memory_backend: Literal["redis"] = Field(
+        default="redis",
         description=(
             "Conversation memory is stored separately from per-run graph state."
         ),
@@ -873,11 +873,9 @@ class WorkflowGraphManifest(BaseModel):
     name: str = "bastion_diligence_graph"
     state_model: str = "BastionGraphState"
     state_scope: Literal["single_run"] = "single_run"
-    checkpointing_enabled: bool = False
-    checkpoint_backend: Literal["none"] = "none"
-    conversation_memory_backend: Literal["in_process_session_store"] = (
-        "in_process_session_store"
-    )
+    checkpointing_enabled: bool = True
+    checkpoint_backend: Literal["postgresql"] = "postgresql"
+    conversation_memory_backend: Literal["redis"] = "redis"
     nodes: list[WorkflowGraphNode]
     edges: list[WorkflowGraphEdge]
 

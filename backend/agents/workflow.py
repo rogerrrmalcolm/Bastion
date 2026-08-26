@@ -2,11 +2,13 @@ import json
 import logging
 import operator
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Annotated, Literal, TypedDict
 from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
+from checkpointing import get_postgres_checkpointer
 from agents.financial_agent import run_financial_agent
 from agents.market_agent import run_market_agent
 from agents.memo_agent import run_memo_agent
@@ -600,7 +602,7 @@ def _build_workflow_diagnostics(
     )
 
 
-def build_diligence_graph():
+def build_diligence_graph(checkpointer=None):
     graph = StateGraph(BastionGraphState)
     graph.add_node("orchestrator_agent", _run_orchestrator_node)
     graph.add_node("document_retrieval", _run_document_retrieval_node)
@@ -645,10 +647,12 @@ def build_diligence_graph():
     graph.add_edge("risk_agent", "memo_agent")
     graph.add_edge("memo_agent", "build_report")
     graph.add_edge("build_report", END)
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
-DILIGENCE_GRAPH = build_diligence_graph()
+@lru_cache(maxsize=1)
+def get_durable_diligence_graph():
+    return build_diligence_graph(checkpointer=get_postgres_checkpointer())
 
 
 def run_investment_banking_workflow(request: AnalyzeRequest) -> AnalyzeResponse:
@@ -681,9 +685,15 @@ Current structured M&A deal context:
         "execution_trace": [],
         "workflow_warnings": [],
     }
-    final_state = DILIGENCE_GRAPH.invoke(
+    final_state = get_durable_diligence_graph().invoke(
         initial_state,
-        config={"recursion_limit": GRAPH_RECURSION_LIMIT},
+        config={
+            "recursion_limit": GRAPH_RECURSION_LIMIT,
+            "configurable": {
+                "thread_id": workflow_run_id,
+                "checkpoint_ns": "diligence",
+            },
+        },
     )
 
     investment_memo = final_state["investment_memo"]
