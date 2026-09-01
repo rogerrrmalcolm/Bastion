@@ -7,7 +7,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import TypeVar
 
-from dotenv import load_dotenv
+import configuration  # noqa: F401
 from google import genai
 from google.genai import errors
 import httpx
@@ -18,6 +18,7 @@ DEFAULT_EMBEDDING_MODEL = os.getenv(
     "GEMINI_EMBEDDING_MODEL",
     "gemini-embedding-001",
 )
+EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
 DEFAULT_TEMPERATURE = 0.15
 MAX_RETRY_ATTEMPTS = 5
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -30,7 +31,6 @@ missing, say exactly what is missing and why it matters. Keep prose fields short
 and decision-oriented; use lists only for the most material items.
 """
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 def _configure_google_credentials() -> None:
@@ -115,7 +115,10 @@ def call_gemini_embeddings(
         lambda: get_gemini_client().models.embed_content(
             model=model,
             contents=texts,
-            config={"task_type": task_type},
+            config={
+                "task_type": task_type,
+                "output_dimensionality": EMBEDDING_DIMENSIONS,
+            },
         )
     )
     embeddings = response.embeddings or []

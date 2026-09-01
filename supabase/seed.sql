@@ -1,0 +1,1 @@
+-- Bastion intentionally has no default seed data.

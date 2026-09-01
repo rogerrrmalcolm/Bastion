@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -9,6 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from main import app
+import main
 
 
 class WorkflowApiTests(unittest.TestCase):
@@ -43,6 +45,31 @@ class WorkflowApiTests(unittest.TestCase):
                 for edge in payload["edges"]
             )
         )
+
+    def test_final_report_endpoint_reads_postgres_store(self):
+        workflow_run_id = "00000000-0000-0000-0000-000000000001"
+        store = Mock()
+        store.get.return_value = {
+            "workflow_run_id": workflow_run_id,
+            "title": "Stored report",
+        }
+
+        with patch.object(main, "get_report_store", return_value=store):
+            response = TestClient(app).get(f"/reports/{workflow_run_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["title"], "Stored report")
+        store.get.assert_called_once_with(workflow_run_id)
+
+    def test_missing_final_report_returns_404(self):
+        workflow_run_id = "00000000-0000-0000-0000-000000000002"
+        store = Mock()
+        store.get.return_value = None
+
+        with patch.object(main, "get_report_store", return_value=store):
+            response = TestClient(app).get(f"/reports/{workflow_run_id}")
+
+        self.assertEqual(response.status_code, 404)
 
 if __name__ == "__main__":
     unittest.main()

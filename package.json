@@ -1,0 +1,13 @@
+{
+  "name": "bastion-local-infrastructure",
+  "private": true,
+  "scripts": {
+    "supabase:init": "supabase init",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset"
+  },
+  "devDependencies": {
+    "supabase": "2.116.0"
+  }
+}

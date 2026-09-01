@@ -51,11 +51,13 @@ flowchart TB
     UI -->|"POST /analyze"| Routes
     Intake -->|"multipart PDF"| Upload
     Graph <--> Runtime
-    Session <--> Memory[("Redis session memory")]
+    Session <--> Memory[("Redis shared sessions")]
+    Routes <--> RedisControl[("Redis sessions + controls + query vectors")]
     Graph <--> State["Per-run BastionGraphState"]
     Graph <--> Checkpoints[("PostgreSQL checkpoints")]
     Upload --> S3[("Amazon S3")]
-    S3 --> Documents --> State
+    S3 --> Documents --> Vectors[("Supabase pgvector")]
+    Vectors --> State
     Research --> PublicData["Market data + news endpoints"]
     Agents --> Gemini["Gemini 2.5 Flash on Vertex AI"]
 ```
@@ -115,11 +117,29 @@ flowchart LR
 | Mechanism | Scope | Purpose | Current implementation |
 | --- | --- | --- | --- |
 | `BastionGraphState` | One analysis run | Typed working record shared by graph nodes | LangGraph `TypedDict` with reducers |
-| Embedding retrieval | One analysis run | Page-aware S3 excerpts selected per specialist | Gemini embeddings + cosine ranking |
+| Embedding retrieval | Across analysis runs | Persist page-aware S3 chunks and select excerpts per specialist | Gemini 768-dimensional embeddings + Supabase pgvector HNSW search |
 | Partial node update | One superstep | Add or replace fields without mutating global state | Dictionary returned by each node |
-| Session memory | Configurable Redis TTL | Bounded continuity for requests sharing `session_id` | Redis lists with message caps and expiry |
+| Session memory | Configurable Redis TTL | Bounded continuity shared by every API worker using the same `session_id` | Redis lists with message caps and expiry |
+| Rate limiting | Configurable fixed window | Enforce shared request counts across all API workers | Atomic Redis `INCR`/`EXPIRE` script keyed by route and client |
+| Distributed locks | Per active session operation | Prevent concurrent workers from processing the same session operation | Token-owned Redis `SET NX EX` locks with compare-and-delete release |
+| Query-embedding cache | Seven-day default TTL | Avoid repeated Gemini query-vector calls without caching retrieval results | Redis value keyed by embedding model, dimensions, and normalized-query SHA-256 |
 | Checkpointer | Across restarts | Durable graph snapshots for recovery, replay, and inspection | PostgreSQL `PostgresSaver` |
+| Final report store | Across restarts | Retain completed request, memo, and report payloads | PostgreSQL `final_reports`, keyed by `workflow_run_id` |
 | LangGraph Store | Across workflows | Searchable long-term memory | Not implemented |
+
+Redis is visible at the API boundary rather than inside agent business logic:
+
+```text
+POST /chat             -> rate limit -> session lock -> session messages -> Gemini
+POST /analyze          -> rate limit -> analysis lock -> session messages -> LangGraph
+LangGraph RAG node      -> query-vector cache -> fresh pgvector search per specialist
+POST /documents/upload -> shared rate limit -> Amazon S3
+```
+
+The corresponding Redis key families are `bastion:session:*`,
+`bastion:ratelimit:*`, `bastion:lock:*`, and `bastion:query-embedding:*`.
+Session and coordination state are replaceable; PostgreSQL remains the durable
+source for checkpoints and completed reports.
 
 Every `/analyze` request generates a new `workflow_run_id` for correlation, while the graph invocation starts from a newly constructed state object. Tests invoke the same compiled graph repeatedly and verify that company context and run IDs do not leak between deals. Conversation memory is loaded separately, truncated to bounded character budgets, and cannot replace the current structured deal context.
 
@@ -182,6 +202,8 @@ The production frontend build separates Bastion's 40.72 kB application chunk (13
 Performance decisions already represented in the code:
 
 - Redis stores bounded, expiring session messages outside Python process memory.
+- Redis atomically counts rate limits and coordinates short-lived session locks across FastAPI workers.
+- Redis caches query embeddings but never chunk matches or agent retrieval results; pgvector retrieval runs for every specialist on every analysis.
 - PostgreSQL persists LangGraph checkpoints through a bounded connection pool so workflow state survives backend restarts.
 - Independent quote/news fetches run concurrently while dependency-heavy agents remain sequential.
 - Typed state projects only required upstream outputs into each agent instead of replaying the complete workflow transcript.
@@ -209,6 +231,7 @@ Reproduce the baseline:
 | `POST` | `/chat` | Session-aware diligence chat |
 | `POST` | `/documents/upload` | Validate and upload a PDF through the backend to S3 |
 | `GET` | `/sessions/{session_id}/memory` | Inspect Redis-backed conversation messages |
+| `GET` | `/reports/{workflow_run_id}` | Read a completed report persisted in PostgreSQL |
 | `GET` | `/workflow/graph` | Inspect the runtime node/edge manifest |
 
 FastAPI also exposes generated OpenAPI documentation at `/docs` when the backend is running.
@@ -217,7 +240,7 @@ FastAPI also exposes generated OpenAPI documentation at `/docs` when the backend
 
 - **Backend:** Python, FastAPI, Pydantic, LangGraph
 - **Reasoning:** Google Gemini 2.5 Flash through Vertex AI
-- **State:** typed per-run LangGraph state, PostgreSQL checkpoints, Redis session memory, pgvector
+- **State:** typed per-run LangGraph state, Supabase PostgreSQL checkpoints, Redis session memory, pgvector
 - **Evaluation:** DeepEval
 - **Research:** S3 PDF extraction, Gemini embeddings, deterministic tools, Yahoo Finance, Google News RSS
 - **Object storage:** Amazon S3 via Boto3
@@ -234,19 +257,28 @@ Bastion/
 |   |-- tools/               # Market, financial, and risk research functions
 |   |-- main.py              # FastAPI routes
 |   |-- memory.py            # Bounded Redis session store
+|   |-- shared_state.py      # Redis rate-limit counters and distributed locks
+|   |-- embedding_cache.py   # Redis query-vector cache; no retrieval-result caching
+|   |-- database.py          # Shared bounded PostgreSQL connection pool
 |   |-- checkpointing.py     # Pooled PostgreSQL LangGraph checkpointer
+|   |-- report_store.py      # Completed report persistence and retrieval
+|   |-- document_store.py    # Supabase document and pgvector persistence
 |   |-- document_retrieval.py # PDF chunking, embedding, and ranking
+|   |-- verify_infrastructure.py # Live Redis/Postgres/vector health checks
 |   |-- report_service.py    # Deterministic report normalization
 |   `-- schemas.py           # Cross-agent and API contracts
 |-- docs/
 |   |-- langgraph-workflow.md
 |   `-- performance-baseline.json
+|-- scripts/                 # Local infrastructure setup
+|-- supabase/                # CLI config, migrations, and seed data
+|-- compose.yaml             # Persistent Redis development service
 `-- frontend/                # Vite + Three.js client
 ```
 
 ## Run Locally
 
-Requirements: Python 3.10+ and Node.js 22.12+.
+Requirements: Python 3.10+, Node.js 22.12+, and Docker Desktop using Linux containers.
 
 ```powershell
 git clone https://github.com/rogerrrmalcolm/Bastion.git
@@ -254,17 +286,32 @@ cd Bastion
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r backend\requirements.txt
+npm install
 Copy-Item .env.example .env
 ```
 
-Configure `.env`, then start the API from the repository root:
+Configure the Google/Vertex and S3 values in `.env`. Then download, start, configure, migrate, and verify Redis plus the local Supabase stack:
 
 ```powershell
-.\.venv\Scripts\python.exe backend\checkpointing.py
+.\scripts\start-local-services.ps1
+```
+
+The script starts persistent Redis from `compose.yaml`, starts Supabase, applies migrations, writes generated local endpoints and keys to the gitignored `.env.services.local`, creates LangGraph checkpoint tables, and runs a live Redis/Data API/pgvector round trip.
+
+Start the API:
+
+```powershell
 .\.venv\Scripts\python.exe -m uvicorn main:app --app-dir backend --reload
 ```
 
-Run the checkpoint setup command once per database deployment before starting the API.
+Supabase Studio is available at [http://127.0.0.1:54323](http://127.0.0.1:54323), and Redis Insight is available at [http://127.0.0.1:5540](http://127.0.0.1:5540). Redis Insight is preconfigured for the Docker-internal endpoint `redis:6379`; the backend uses the host endpoint `redis://127.0.0.1:6379/0`. PostgreSQL and LangGraph use `postgresql://postgres:postgres@127.0.0.1:54322/postgres`. To stop the services without deleting their volumes:
+
+```powershell
+docker compose stop redis redisinsight
+npx supabase stop
+```
+
+For a hosted Supabase project, run `npx supabase login`, `npx supabase link --project-ref <project-ref>`, and `npx supabase db push`. Configure `DATABASE_URL` with the hosted project's direct or session-pooler PostgreSQL connection string and keep the service-role key server-side only.
 
 In a second terminal:
 
@@ -288,36 +335,49 @@ VITE_API_BASE_URL=https://your-backend.example.com
 | `GOOGLE_CLOUD_PROJECT` | Yes | Google Cloud project ID |
 | `GOOGLE_CLOUD_LOCATION` | Yes | Vertex AI region |
 | `GEMINI_EMBEDDING_MODEL` | No | Defaults to `gemini-embedding-001` |
+| `GEMINI_EMBEDDING_DIMENSIONS` | No | Fixed at 768 to match the pgvector schema |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Deployment-dependent | Service-account file path; use workload identity in production where possible |
 | `S3_BUCKET` | For PDF upload | Destination bucket |
 | `AWS_REGION` | For PDF upload | Bucket region |
 | `S3_PREFIX` | No | Object-key prefix; defaults to `pdfs` |
 | `CORS_ORIGINS` | No | Comma-separated allowed frontend origins |
-| `REDIS_URL` | Yes | Shared Redis connection for bounded session memory |
+| `REDIS_URL` | Yes | Shared Redis connection for sessions, rate-limit counters, and distributed locks |
 | `SESSION_TTL_SECONDS` | No | Session expiry; defaults to 86,400 seconds |
 | `SESSION_MAX_MESSAGES` | No | Maximum stored messages per session; defaults to 50 |
+| `RATE_LIMIT_WINDOW_SECONDS` | No | Shared fixed-window duration; defaults to 60 seconds |
+| `CHAT_RATE_LIMIT` | No | `/chat` requests allowed per client/window; defaults to 30 |
+| `ANALYZE_RATE_LIMIT` | No | `/analyze` requests allowed per client/window; defaults to 10 |
+| `UPLOAD_RATE_LIMIT` | No | `/documents/upload` requests allowed per client/window; defaults to 10 |
+| `CHAT_LOCK_TTL_SECONDS` | No | Maximum lifetime for a session chat lock; defaults to 120 seconds |
+| `ANALYZE_LOCK_TTL_SECONDS` | No | Maximum lifetime for a session analysis lock; defaults to 1,800 seconds |
+| `QUERY_EMBEDDING_CACHE_TTL_SECONDS` | No | Query-vector cache TTL; defaults to 604,800 seconds |
 | `DATABASE_URL` | Yes | PostgreSQL connection for durable LangGraph checkpoints |
 | `POSTGRES_POOL_MIN_SIZE` | No | Minimum checkpoint connection-pool size |
 | `POSTGRES_POOL_MAX_SIZE` | No | Maximum checkpoint connection-pool size |
 | `LANGGRAPH_STRICT_MSGPACK` | Yes | Restricts checkpoint deserialization to safe types |
+| `SUPABASE_URL` | Yes | Supabase Data API endpoint |
+| `SUPABASE_ANON_KEY` | Frontend only | Publishable browser key; never substitutes for server authorization |
+| `SUPABASE_SERVICE_ROLE_KEY` | Backend only | Secret server key for document persistence and vector RPC access |
 
 ## Verification
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s backend\tests -v
 .\.venv\Scripts\python.exe -m compileall backend
+.\.venv\Scripts\python.exe backend\verify_infrastructure.py
 cd frontend
 npm run build
 ```
 
-Tests cover agent order, embedding ranking and handoffs, retries, graph parity, run/session isolation, context bounds, and API behavior.
+Tests cover agent order, embedding ranking and handoffs, fresh pgvector searches on cache hits, retries, graph parity, run/session isolation, Redis controls, report persistence, context bounds, and API behavior.
 
 ## Current Boundaries
 
-- PDF files stay in S3; page-aware chunks and embeddings are request-scoped, not persisted or reused. Scanned PDFs require OCR, and `deal_id` indexing is not wired yet.
+- PDF files stay in S3; extracted chunks and 768-dimensional embeddings persist in Supabase and are reused by source URI. Scanned PDFs still require OCR, and deal-level authorization is not wired yet.
 - Session history requires reachable Redis, and durable graph execution requires reachable PostgreSQL; startup configuration should use managed secrets.
 - Checkpoints are durable and isolated by workflow run, but the API does not yet expose pause/resume or replay controls.
-- Authentication and tenant authorization are not implemented. Supabase environment variables may exist in local configuration, but no Supabase code path is currently active.
+- Completed report packages are stored separately in `final_reports` and are readable by workflow run ID.
+- Authentication and tenant authorization are not implemented. The backend uses the Supabase secret key, so its document tables are inaccessible to anonymous and authenticated Data API roles until explicit RLS policies are designed.
 - The frontend dashboard stores summaries in browser `localStorage`; it is not a shared team pipeline.
 - S3 access is server-side, but bucket privacy, encryption, lifecycle, IAM, malware scanning, and document deletion remain deployment responsibilities.
 

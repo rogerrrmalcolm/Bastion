@@ -17,6 +17,7 @@ from agents.risk_agent import run_risk_agent
 from document_retrieval import build_agent_document_contexts
 from memory import memory_store
 from report_service import build_report_package
+from report_store import get_report_store
 from schemas import (
     AgentExecutionStep,
     AnalyzeRequest,
@@ -698,13 +699,7 @@ Current structured M&A deal context:
 
     investment_memo = final_state["investment_memo"]
     report = final_state["report"]
-    memory_store.add_message(
-        session.session_id,
-        "assistant",
-        _workflow_memory_summary(investment_memo, report),
-    )
-
-    return AnalyzeResponse(
+    response = AnalyzeResponse(
         session_id=session.session_id,
         orchestration_plan=final_state["orchestration_plan"],
         market_analysis=final_state["market_analysis"],
@@ -714,3 +709,16 @@ Current structured M&A deal context:
         report=report,
         workflow_diagnostics=_build_workflow_diagnostics(final_state),
     )
+    get_report_store().save(
+        workflow_run_id=workflow_run_id,
+        session_id=session.session_id,
+        request=request,
+        investment_memo=investment_memo,
+        report=report,
+    )
+    memory_store.add_message(
+        session.session_id,
+        "assistant",
+        _workflow_memory_summary(investment_memo, report),
+    )
+    return response

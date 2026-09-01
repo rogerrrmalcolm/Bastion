@@ -4,7 +4,7 @@
 
 Bastion uses a **stateful LangGraph workflow**. Specialist agents and deterministic support nodes read a typed, request-scoped state object and return partial updates. Edges define legal transitions, and conditional self-edges retry failed research until the graph advances or reaches `END`.
 
-The graph is not a memory database. It is a state-transition runtime. Bastion currently needs shared working state during one analysis, so it deliberately does not add a checkpointer or database.
+The graph is not a memory database. It is a state-transition runtime. Bastion persists per-run graph snapshots through PostgreSQL, conversation history through Redis, and reusable document embeddings through Supabase pgvector.
 
 ## Mental Model
 
@@ -15,10 +15,10 @@ The graph is not a memory database. It is a state-transition runtime. Bastion cu
 | Node | Function that reads state and returns partial updates | Agents, research functions, report builder |
 | Edge | Permitted next transition | Fixed handoffs and conditional retry routes |
 | Reducer | Rule for combining an update with existing state | Append trace and warning lists with `operator.add` |
-| Checkpointer | State snapshots for resume or replay | Not enabled |
+| Checkpointer | State snapshots for recovery, inspection, or replay | Supabase PostgreSQL `PostgresSaver` |
 | Store | Cross-thread, searchable long-term memory | Not implemented |
 | Session memory | Application-owned conversation context | Bounded, expiring Redis `memory_store` |
-| Checkpoints | Durable per-run graph snapshots | PostgreSQL `PostgresSaver` |
+| Document vectors | Reusable semantic retrieval across analyses | Supabase pgvector with HNSW cosine search |
 
 ## Runtime Topology
 
@@ -48,7 +48,7 @@ The specialist path remains sequential because its outputs are causally dependen
 
 - `workflow_run_id`, `session_id`, and current deal context.
 - The validated `OrchestrationPlan`.
-- Agent-specific document excerpts and extraction statistics from S3 PDFs.
+- Agent-specific document excerpts retrieved from persistent Supabase pgvector chunks plus extraction statistics.
 - Serialized research packets plus attempt, status, and error maps.
 - Typed market, financial, risk, memo, and report outputs.
 - Append-only execution trace and workflow warnings.
@@ -81,7 +81,7 @@ LangGraph merges this partial update into the current state. The next node sees 
 
 The graph object is reusable; graph state is isolated per analysis. `/analyze` constructs a new initial dictionary and invokes the PostgreSQL-checkpointed graph with `workflow_run_id` as its LangGraph `thread_id`. This preserves every run across restarts without merging state between analyses that share a user session. Redis separately stores bounded conversation messages under `session_id`.
 
-Tests execute two deals through the same compiled graph and assert that run ID and company context stay isolated. There is no checkpointer, so completed state is returned to the caller and then released. Restarting the backend cannot recover an interrupted run.
+Tests execute two deals through the same compiled graph and assert that run ID and company context stay isolated. PostgreSQL checkpoints preserve node-level snapshots after Python releases the active in-memory state. The current API does not yet expose a resume endpoint, but the checkpoint records required for recovery are durable.
 
 ## Conditional Cycles
 
@@ -95,9 +95,9 @@ The application permits three retrieval attempts by default. A graph recursion l
 
 ## Conversation Memory Is Separate
 
-`memory_store` keeps bounded user/assistant history by `session_id` for the lifetime of the backend process. The prompt receives at most six recent messages, 1,200 characters per message, and 6,000 characters total. The current request's structured buyer, target, and deal fields are appended separately, so remembered context cannot replace the active deal input.
+`memory_store` keeps bounded user/assistant history in Redis by `session_id`. Redis retains at most 50 messages per session and refreshes a configurable 24-hour TTL after activity. The prompt receives at most six recent messages, 1,200 characters per message, and 6,000 characters total. The current request's structured buyer, target, and deal fields are appended separately, so remembered context cannot replace the active deal input.
 
-This memory is neither graph state nor a LangGraph Store. It is intentionally non-durable. A production database is warranted only if cross-restart continuity, multi-worker sharing, tenant history, retention, or deletion becomes a product requirement.
+This memory is neither graph state nor a LangGraph Store. Redis keeps it outside FastAPI's Python heap and provides bounded cross-restart continuity, while PostgreSQL remains the durable store for graph checkpoints.
 
 ## Observability
 
@@ -111,18 +111,15 @@ Every successful `/analyze` response includes:
 - `retrieval_statuses`
 - `document_retrieval_stats`
 - `warnings`
-- explicit `checkpointing_enabled: false`
+- explicit `checkpointing_enabled: true` with `checkpoint_backend: "postgresql"`
 
 These diagnostics explain what happened without exposing the complete internal state object.
 
-## When Persistence Becomes Necessary
+## Persistence Boundaries
 
-Add a LangGraph checkpointer only when Bastion must support at least one of:
+- Redis stores short-lived conversation continuity and enforces TTL and message-count bounds.
+- Supabase PostgreSQL stores LangGraph checkpoints keyed by `workflow_run_id`.
+- Supabase pgvector stores page-aware document chunks keyed by immutable S3 source URI.
+- S3 remains the source of truth for original PDFs.
 
-- Resume after process or worker failure.
-- Human approval interrupts.
-- Long-running asynchronous jobs.
-- Replay, branching, or audit snapshots.
-- State sharing across application workers.
-
-At that point, backend selection should follow deployment requirements rather than defaulting to a local database. Retention, encryption, authorization, deletion, and checkpoint payload growth need to be designed with the storage layer.
+Production deployment still requires explicit retention, encryption, tenant authorization, deletion, backup, and checkpoint-size policies.

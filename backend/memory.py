@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Literal, Protocol
 from uuid import uuid4
 
+import configuration  # noqa: F401
+
 Role = Literal["user", "assistant", "system"]
 
 

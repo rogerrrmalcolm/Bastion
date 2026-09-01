@@ -285,6 +285,18 @@ const WORKFLOW_TIMEOUT_MS = 420000
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
 const isLocalApiBaseUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_BASE_URL)
 const DASHBOARD_STORAGE_KEY = 'bastion-dashboard-analyses'
+const SESSION_ID_STORAGE_KEY = 'bastion-session-id'
+
+function getOrCreateSessionId() {
+  const existingSessionId = window.localStorage.getItem(SESSION_ID_STORAGE_KEY)
+  if (existingSessionId) return existingSessionId
+
+  const sessionId = window.crypto?.randomUUID?.() ?? `session-${Date.now()}`
+  window.localStorage.setItem(SESSION_ID_STORAGE_KEY, sessionId)
+  return sessionId
+}
+
+const BASTION_SESSION_ID = getOrCreateSessionId()
 const confidenceScores = {
   low: 34,
   medium: 67,
@@ -1808,7 +1820,7 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
-        session_id: window.crypto?.randomUUID?.() ?? `session-${Date.now()}`,
+        session_id: BASTION_SESSION_ID,
         buyer_context: buyerContext,
         target_context: targetContext,
         deal_context: dealContext || 'Compare the buyer and target for a potential M&A transaction.',
